@@ -65,59 +65,16 @@ const ensureUserAuthColumns = async () => {
 //   }
 // };
 
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:8081,http://localhost:5173,http://localhost:3000')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-const allowedHostnames = new Set(['localhost', '127.0.0.1', '::1']);
-
-const isOriginAllowed = (origin) => {
-  if (!origin) {
-    return true;
-  }
-
-  if (allowedOrigins.includes(origin)) {
-    return true;
-  }
-
-  const normalizedOrigin = String(origin).toLowerCase();
-  if (
-    normalizedOrigin.startsWith('http://localhost:') ||
-    normalizedOrigin.startsWith('https://localhost:') ||
-    normalizedOrigin.startsWith('http://127.0.0.1:') ||
-    normalizedOrigin.startsWith('https://127.0.0.1:') ||
-    normalizedOrigin === 'http://localhost' ||
-    normalizedOrigin === 'https://localhost' ||
-    normalizedOrigin === 'http://127.0.0.1' ||
-    normalizedOrigin === 'https://127.0.0.1'
-  ) {
-    return true;
-  }
-
-  try {
-    const parsed = new URL(origin);
-    return allowedHostnames.has(parsed.hostname);
-  } catch {
-    return false;
-  }
-};
-
-const corsOptions = {
-  origin(origin, callback) {
-    if (isOriginAllowed(origin)) {
-      callback(null, true);
-      return;
-    }
-    callback(new Error(`CORS blocked for origin: ${origin}`));
-  },
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-};
-
 // middleware
-app.use(cors(corsOptions));
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'https://dreamcarta.co.in',
+    'https://www.dreamcarta.co.in'
+  ],
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
