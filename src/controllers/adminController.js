@@ -141,3 +141,47 @@ export const deleteAdminUser = async (req, res) => {
     res.status(500).json({ message: "Server error ❌" });
   }
 };
+
+// ================= UPDATE ROLE =================
+export const updateUserRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    // validation
+    if (role !== "admin" && role !== "user") {
+      return res.status(400).json({
+        message: "Role must be admin or user ❌",
+      });
+    }
+
+    const user = await User.findByPk(id);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found ❌",
+      });
+    }
+
+    // prevent self downgrade
+    if (req.admin?.id === user.id && role !== "admin") {
+      return res.status(400).json({
+        message: "You cannot change your own role ❌",
+      });
+    }
+
+    user.role = role;
+    await user.save();
+
+    res.status(200).json({
+      message: "User role updated successfully ✅",
+      user: toAdminListItem(sanitizeUser(user)),
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Server error ❌",
+    });
+  }
+};

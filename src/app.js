@@ -14,11 +14,13 @@ import habitsRoutes from "./routes/habitsRoutes.js";
 import visionBoardRoutes from "./routes/visionBoardRoutes.js";
 import dreamsRoutes from "./routes/dreamsRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import contactRoutes from "./routes/contactRoutes.js";
 
 import './models/Goal.js';
 import './models/Habit.js';
 import './models/VisionBoardItem.js';
 import './models/Dream.js';
+import './models/Contact.js';
 
 import createAdmin from "./utils/createAdmin.js";
 
@@ -81,6 +83,7 @@ app.use("/api/habits", habitsRoutes);
 app.use("/api/vision-board", visionBoardRoutes);
 app.use("/api/dreams", dreamsRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/contact", contactRoutes);
 
 
 // ================== 🔥 ERROR HANDLER ==================

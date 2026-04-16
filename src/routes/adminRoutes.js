@@ -5,7 +5,8 @@ import {
   deleteAdminUser,
   getAdminUsers,
   updateAdminUserStatus,
-  createAdminUser // 👈 ADD THIS
+  createAdminUser,
+  updateUserRole
 } from "../controllers/adminController.js";
 
 const router = express.Router();
@@ -26,6 +27,14 @@ router.patch(
   updateAdminUserStatus
 );
 
+// ✅ Update role (ONLY ONE TIME)
+router.patch(
+  "/users/:id/role",
+  firebaseAuthMiddleware,
+  adminMiddleware,
+  updateUserRole
+);
+
 // ✅ Delete user
 router.delete(
   "/users/:id",
@@ -34,7 +43,7 @@ router.delete(
   deleteAdminUser
 );
 
-// 🔥 CREATE ADMIN (IMPORTANT)
+// ✅ Create admin
 router.post(
   "/create-admin",
   firebaseAuthMiddleware,
@@ -42,4 +51,4 @@ router.post(
   createAdminUser
 );
 
-export default router;
+export default router; 
