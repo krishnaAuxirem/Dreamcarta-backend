@@ -3,6 +3,8 @@ dotenv.config();
 
 import express from 'express';
 import cors from 'cors';
+import path from "path";
+import { fileURLToPath } from "url";
 import { DataTypes } from 'sequelize';
 import { sequelize, connectDB } from "./config/db.js";
 import User from "./models/User.js";
@@ -15,16 +17,20 @@ import visionBoardRoutes from "./routes/visionBoardRoutes.js";
 import dreamsRoutes from "./routes/dreamsRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
+import blogRoutes from "./routes/blogRoutes.js";
 
 import './models/Goal.js';
 import './models/Habit.js';
 import './models/VisionBoardItem.js';
 import './models/Dream.js';
 import './models/Contact.js';
+import contentRoutes from "./routes/contentRoutes.js";
 
 import createAdmin from "./utils/createAdmin.js";
 
 const app = express();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 
 // 🔧 Ensure columns
@@ -72,6 +78,7 @@ app.use(cors({
 // Body parser
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 
 // ================== 🔥 ROUTES ==================
@@ -84,6 +91,8 @@ app.use("/api/vision-board", visionBoardRoutes);
 app.use("/api/dreams", dreamsRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/contact", contactRoutes);
+app.use("/api/content", contentRoutes);
+app.use("/api/blogs", blogRoutes);
 
 
 // ================== 🔥 ERROR HANDLER ==================

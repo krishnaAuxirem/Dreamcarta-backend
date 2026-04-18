@@ -1,5 +1,6 @@
 import User from "../models/User.js";
 import bcrypt from "bcrypt";
+import { Op } from "sequelize";
 
 // ================= UTIL =================
 const sanitizeUser = (userInstance) => {
@@ -183,5 +184,38 @@ export const updateUserRole = async (req, res) => {
     res.status(500).json({
       message: "Server error ❌",
     });
+  }
+};
+
+export const getAdminStats = async (req, res) => {
+  try {
+    const totalUsers = await User.count();
+
+    const activeUsers = await User.count({
+      where: { isActive: true }
+    });
+
+    const newUsers = await User.count({
+      where: {
+        createdAt: {
+          [Op.gte]: new Date(new Date().setDate(new Date().getDate() - 7))
+        }
+      }
+    });
+
+    const conversionRate = totalUsers
+      ? ((activeUsers / totalUsers) * 100).toFixed(1)
+      : 0;
+
+    res.status(200).json({
+      totalUsers,
+      activeUsers,
+      newUsers,
+      conversionRate
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch stats ❌" });
   }
 };

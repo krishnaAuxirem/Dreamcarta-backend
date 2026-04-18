@@ -6,7 +6,8 @@ import {
   getAdminUsers,
   updateAdminUserStatus,
   createAdminUser,
-  updateUserRole
+  updateUserRole,
+  getAdminStats
 } from "../controllers/adminController.js";
 
 const router = express.Router();
@@ -51,4 +52,10 @@ router.post(
   createAdminUser
 );
 
+router.get(
+  "/stats",
+  firebaseAuthMiddleware,
+  adminMiddleware,
+  getAdminStats
+);
 export default router; 

@@ -1,0 +1,19 @@
+import express from "express";
+import { getContent, updateContent } from "../controllers/contentController.js";
+import firebaseAuthMiddleware from "../middleware/firebaseAuthMiddleware.js";
+import adminMiddleware from "../middleware/adminMiddleware.js";
+
+const router = express.Router();
+
+// ✅ Public → Website ला content fetch करता येईल
+router.get("/", getContent);
+
+// 🔒 Admin only → content update
+router.put(
+  "/",
+  firebaseAuthMiddleware,
+  adminMiddleware,
+  updateContent
+);
+
+export default router;
