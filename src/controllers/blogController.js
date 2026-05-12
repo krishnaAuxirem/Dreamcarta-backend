@@ -20,11 +20,20 @@ export const getBlogs = async (req, res) => {
 
 // UPDATE
 export const updateBlog = async (req, res) => {
-  const blog = await Blog.findByPk(req.params.id);
-  if (!blog) return res.status(404).json({ message: "Not found" });
+  try {
+    const { id } = req.params;
 
-  await blog.update(req.body);
-  res.json(blog);
+    const blog = await Blog.findByPk(id);
+    if (!blog) {
+      return res.status(404).json({ message: "Blog not found ❌" });
+    }
+
+    await blog.update(req.body);
+
+    res.json({ message: "Blog updated ✅", blog });
+  } catch {
+    res.status(500).json({ message: "Update failed ❌" });
+  }
 };
 
 // DELETE

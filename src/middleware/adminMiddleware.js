@@ -2,11 +2,12 @@ import User from "../models/User.js";
 
 const adminMiddleware = async (req, res, next) => {
   try {
-    if (!req.user?.id) {
+    const sessionUserId = req.user?.id || req.admin?.id;
+    if (!sessionUserId) {
       return res.status(401).json({ message: "Unauthorized ❌" });
     }
 
-    const user = await User.findByPk(req.user.id);
+    const user = await User.findByPk(sessionUserId);
     if (!user) {
       return res.status(401).json({ message: "User not found ❌" });
     }
@@ -20,6 +21,13 @@ const adminMiddleware = async (req, res, next) => {
     }
 
     req.admin = user;
+    req.user = {
+      ...(req.user || {}),
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      isActive: user.isActive,
+    };
     next();
   } catch (error) {
     return res.status(500).json({ message: "Server error ❌" });

@@ -4,6 +4,7 @@ import adminMiddleware from "../middleware/adminMiddleware.js";
 import {
   deleteAdminUser,
   getAdminUsers,
+  updateAdminUser,
   updateAdminUserStatus,
   createAdminUser,
   updateUserRole,
@@ -20,8 +21,36 @@ router.get(
   getAdminUsers
 );
 
+// ✅ Create user/admin/mentor
+router.post(
+  "/users",
+  firebaseAuthMiddleware,
+  adminMiddleware,
+  createAdminUser
+);
+
+// ✅ Patch user fields
+router.patch(
+  "/users/:id",
+  firebaseAuthMiddleware,
+  adminMiddleware,
+  updateAdminUser
+);
+router.post(
+  "/users/:id",
+  firebaseAuthMiddleware,
+  adminMiddleware,
+  updateAdminUser
+);
+
 // ✅ Update status
 router.patch(
+  "/users/:id/status",
+  firebaseAuthMiddleware,
+  adminMiddleware,
+  updateAdminUserStatus
+);
+router.post(
   "/users/:id/status",
   firebaseAuthMiddleware,
   adminMiddleware,
@@ -30,6 +59,12 @@ router.patch(
 
 // ✅ Update role (ONLY ONE TIME)
 router.patch(
+  "/users/:id/role",
+  firebaseAuthMiddleware,
+  adminMiddleware,
+  updateUserRole
+);
+router.post(
   "/users/:id/role",
   firebaseAuthMiddleware,
   adminMiddleware,

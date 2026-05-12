@@ -2,6 +2,13 @@ import User from "../models/User.js";
 import bcrypt from "bcrypt";
 import { Op } from "sequelize";
 
+const ALLOWED_ROLES = ["user", "mentor", "admin"];
+
+const normalizeRole = (value, fallback = "user") => {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ALLOWED_ROLES.includes(normalized) ? normalized : fallback;
+};
+
 // ================= UTIL =================
 const sanitizeUser = (userInstance) => {
   const user = userInstance?.toJSON ? userInstance.toJSON() : userInstance;
@@ -14,7 +21,7 @@ const toAdminListItem = (user) => ({
   id: String(user.id),
   name: user.name || "Unknown User",
   email: user.email || "",
-  role: user.role === "admin" ? "admin" : "user",
+  role: normalizeRole(user.role, "user"),
   joinedAt: user.createdAt,
   goals: 0,
   habits: 0,
@@ -25,10 +32,14 @@ const toAdminListItem = (user) => ({
 // ================= CREATE ADMIN =================
 export const createAdminUser = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, status } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ message: "All fields required ❌" });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters ❌" });
     }
 
     const existingUser = await User.findOne({ where: { email } });
@@ -37,17 +48,19 @@ export const createAdminUser = async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const requestedRole = normalizeRole(role, "user");
+    const activeFlag = status === "inactive" ? false : true;
 
     const newUser = await User.create({
       name,
       email,
       password: hashedPassword,
-      role: role || "admin",
-      isActive: true,
+      role: requestedRole,
+      isActive: activeFlag,
     });
 
     res.status(201).json({
-      message: "Admin created successfully ✅",
+      message: "User created successfully ✅",
       user: toAdminListItem(sanitizeUser(newUser)),
     });
 
@@ -64,28 +77,82 @@ export const getAdminUsers = async (req, res) => {
     const limit = Math.min(100, Math.max(1, Number(req.query.limit || 20)));
     const search = String(req.query.search || "").trim();
 
+    const where = search
+      ? {
+          [Op.or]: [
+            { name: { [Op.like]: `%${search}%` } },
+            { email: { [Op.like]: `%${search}%` } },
+          ],
+        }
+      : undefined;
+
     const users = await User.findAll({
+      where,
       order: [["createdAt", "DESC"]],
       offset: (page - 1) * limit,
       limit,
     });
 
-    const filteredUsers = search
-      ? users.filter((u) => {
-          const name = String(u.name || "").toLowerCase();
-          const email = String(u.email || "").toLowerCase();
-          const needle = search.toLowerCase();
-          return name.includes(needle) || email.includes(needle);
-        })
-      : users;
+    const total = await User.count({ where });
 
     res.status(200).json({
-      users: filteredUsers.map((u) => toAdminListItem(sanitizeUser(u))),
+      users: users.map((u) => toAdminListItem(sanitizeUser(u))),
       page,
       limit,
+      total,
     });
   } catch (error) {
     res.status(500).json({ message: "Server error ❌" });
+  }
+};
+
+export const updateAdminUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, role, status, isActive } = req.body || {};
+
+    const user = await User.findByPk(id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found ❌" });
+    }
+
+    if (req.admin?.id === user.id && role && normalizeRole(role, "invalid") !== "admin") {
+      return res.status(400).json({ message: "You cannot change your own role ❌" });
+    }
+
+    if (req.admin?.id === user.id && (status === "inactive" || isActive === false)) {
+      return res.status(400).json({ message: "You cannot deactivate your own admin account ❌" });
+    }
+
+    if (typeof name === "string" && name.trim()) {
+      user.name = name.trim();
+    }
+
+    if (role !== undefined) {
+      const nextRole = normalizeRole(role, "invalid");
+      if (nextRole === "invalid") {
+        return res.status(400).json({ message: "Role must be user, mentor or admin ❌" });
+      }
+      user.role = nextRole;
+    }
+
+    if (status !== undefined) {
+      if (status !== "active" && status !== "inactive") {
+        return res.status(400).json({ message: "Status must be active or inactive ❌" });
+      }
+      user.isActive = status === "active";
+    } else if (typeof isActive === "boolean") {
+      user.isActive = isActive;
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      message: "User updated successfully ✅",
+      user: toAdminListItem(sanitizeUser(user)),
+    });
+  } catch {
+    return res.status(500).json({ message: "Server error ❌" });
   }
 };
 
@@ -149,10 +216,11 @@ export const updateUserRole = async (req, res) => {
     const { id } = req.params;
     const { role } = req.body;
 
-    // validation
-    if (role !== "admin" && role !== "user") {
+    const nextRole = normalizeRole(role, "invalid");
+
+    if (nextRole === "invalid") {
       return res.status(400).json({
-        message: "Role must be admin or user ❌",
+        message: "Role must be admin, mentor or user ❌",
       });
     }
 
@@ -165,13 +233,13 @@ export const updateUserRole = async (req, res) => {
     }
 
     // prevent self downgrade
-    if (req.admin?.id === user.id && role !== "admin") {
+    if (req.admin?.id === user.id && nextRole !== "admin") {
       return res.status(400).json({
         message: "You cannot change your own role ❌",
       });
     }
 
-    user.role = role;
+    user.role = nextRole;
     await user.save();
 
     res.status(200).json({

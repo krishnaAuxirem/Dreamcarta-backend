@@ -2,6 +2,13 @@ import User from "../models/User.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
+const ALLOWED_ROLES = ["user", "mentor", "admin"];
+
+const normalizeRole = (roleValue, fallback = "user") => {
+  const normalized = String(roleValue || "").trim().toLowerCase();
+  return ALLOWED_ROLES.includes(normalized) ? normalized : fallback;
+};
+
 const sanitizeUser = (userInstance) => {
   const user = userInstance?.toJSON ? userInstance.toJSON() : userInstance;
   if (!user) {
@@ -19,7 +26,8 @@ export const registerUser = async (req, res) => {
       return res.status(400).json({ message: "Name, email, and password required ❌" });
     }
 
-    const requestedRole = role === 'admin' ? 'admin' : 'user';
+    const requestedRole = normalizeRole(role, "user");
+    console.log("Register role:", role, "=>", requestedRole);
 
     // check existing user
     const existingUser = await User.findOne({ where: { email } });
@@ -56,7 +64,7 @@ export const loginUser = async (req, res) => {
     if (!req.body) {
       return res.status(400).json({ message: "Missing request body ❌" });
     }
-    const { email, password } = req.body;
+    const { email, password, role } = req.body;
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password required ❌" });
     }
@@ -81,12 +89,29 @@ export const loginUser = async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials ❌" });
     }
 
+    const dbRole = normalizeRole(user.role, "user");
+
+    if (role) {
+      const requestedRole = normalizeRole(role, "invalid");
+      console.log("Login role:", role, "=>", requestedRole);
+      console.log("DB role:", user.role, "=>", dbRole);
+      if (requestedRole === "invalid") {
+        return res.status(400).json({ message: "Invalid login role ❌" });
+      }
+
+      if (dbRole !== requestedRole) {
+        return res.status(403).json({
+          message: `Login as ${dbRole} only ❌`,
+        });
+      }
+    }
+
     if (user.isActive === false) {
       return res.status(403).json({ message: "Account is inactive ❌" });
     }
 
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role: dbRole },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
@@ -94,7 +119,15 @@ export const loginUser = async (req, res) => {
     res.status(200).json({
       message: "Login successful ✅",
       token,
-      user: sanitizeUser(user),
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: dbRole,
+        isActive: user.isActive,
+        profilePic: user.profilePic,
+        createdAt: user.createdAt,
+      },
     });
 
   } catch (error) {
@@ -147,9 +180,7 @@ export const firebaseLogin = async (req, res) => {
     user.email = email || user.email;
     user.name = name || user.name;
     user.profilePic = picture || user.profilePic;
-    if (!user.role) {
-      user.role = 'user';
-    }
+    user.role = normalizeRole(user.role, 'user');
     if (typeof user.isActive !== 'boolean') {
       user.isActive = true;
     }

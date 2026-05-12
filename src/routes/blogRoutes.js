@@ -32,7 +32,12 @@ router.post(
     });
   }
 );
-router.put("/:id", firebaseAuthMiddleware, adminMiddleware, updateBlog);
+router.put(
+  "/:id",
+  firebaseAuthMiddleware,
+  adminMiddleware,
+  updateBlog
+);
 router.delete("/:id", firebaseAuthMiddleware, adminMiddleware, deleteBlog);
 
 export default router;
