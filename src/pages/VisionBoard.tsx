@@ -1,10 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Lock, Image, Sparkles } from 'lucide-react';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import { useAuth } from '@/hooks/useAuth';
+import {
+  createVisionBoardItemApi,
+  deleteVisionBoardItemApi,
+  getVisionBoardItemsApi,
+  updateVisionBoardItemApi,
+} from '@/lib/api/visionBoardApi';
+import { VisionBoardItem } from '@/types';
+import { toast } from '@/components/ui/sonner';
 
 const CATEGORIES = ['All', 'Career', 'Money', 'Health', 'Travel', 'Education', 'Love', 'Lifestyle'];
 
@@ -26,28 +34,195 @@ const SAMPLE_IMAGES = [
 export default function VisionBoardPage() {
   const { isAuthenticated } = useAuth();
   const [activeCategory, setActiveCategory] = useState('All');
-  const [board, setBoard] = useState<typeof SAMPLE_IMAGES>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [board, setBoard] = useState<Array<{ id: string; src: string; category: string; label: string }>>([]);
+  const [visionItems, setVisionItems] = useState<VisionBoardItem[]>([]);
   const [affirmation, setAffirmation] = useState('');
-  const [affirmations, setAffirmations] = useState<string[]>([
-    'I am worthy of all my dreams',
-    'Success comes naturally to me',
-    'I attract abundance and prosperity',
-  ]);
+  const [affirmations, setAffirmations] = useState<Array<{ id: string; text: string }>>([]);
 
-  const filtered = activeCategory === 'All' ? SAMPLE_IMAGES : SAMPLE_IMAGES.filter((img) => img.category === activeCategory);
+  const filtered = useMemo(
+    () => (activeCategory === 'All' ? SAMPLE_IMAGES : SAMPLE_IMAGES.filter((img) => img.category === activeCategory)),
+    [activeCategory]
+  );
 
-  const addToBoard = (img: typeof SAMPLE_IMAGES[0]) => {
-    if (!board.find((b) => b.id === img.id)) {
-      setBoard([...board, img]);
+  const toBoardEntry = (item: VisionBoardItem) => {
+    const matchedSample = SAMPLE_IMAGES.find((img) => img.src === item.content);
+    return {
+      id: item.id,
+      src: item.content,
+      category: item.category || matchedSample?.category || 'Lifestyle',
+      label: matchedSample?.label || 'Vision Item',
+    };
+  };
+
+  const loadVisionBoard = async () => {
+    if (!isAuthenticated) {
+      setVisionItems([]);
+      setBoard([]);
+      setAffirmations([]);
+      setLoading(false);
+      setError('');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      const items = await getVisionBoardItemsApi();
+      setVisionItems(items);
+      setBoard(items.filter((item) => item.type === 'image').map(toBoardEntry));
+      setAffirmations(
+        items
+          .filter((item) => item.type === 'text')
+          .map((item) => ({ id: item.id, text: item.content }))
+      );
+    } catch {
+      setError('Failed to load vision board ❌');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const removeFromBoard = (id: number) => setBoard(board.filter((b) => b.id !== id));
+  useEffect(() => {
+    void loadVisionBoard();
+  }, [isAuthenticated]);
 
-  const addAffirmation = () => {
-    if (affirmation.trim()) {
-      setAffirmations([...affirmations, affirmation.trim()]);
+  const addToBoard = async (img: typeof SAMPLE_IMAGES[0]) => {
+    if (!isAuthenticated || board.find((b) => b.src === img.src)) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const created = await createVisionBoardItemApi({
+        type: 'image',
+        content: img.src,
+        category: img.category,
+        x: 0,
+        y: 0,
+        width: 4,
+        height: 3,
+      });
+      setVisionItems((prev) => [created, ...prev]);
+      setBoard((prev) => [{ id: created.id, src: img.src, category: img.category, label: img.label }, ...prev]);
+      toast.success('Image added to board');
+    } catch {
+      toast.error('Failed to add image');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const removeFromBoard = async (id: string) => {
+    const deletedVisionItem = visionItems.find((item) => item.id === id);
+    const visionIndex = visionItems.findIndex((item) => item.id === id);
+    const deletedBoardEntry = board.find((item) => item.id === id);
+    const boardIndex = board.findIndex((item) => item.id === id);
+    const deletedAffirmation = affirmations.find((item) => item.id === id);
+    const affirmationIndex = affirmations.findIndex((item) => item.id === id);
+
+    setVisionItems((prev) => prev.filter((item) => item.id !== id));
+    setBoard((prev) => prev.filter((b) => b.id !== id));
+    setAffirmations((prev) => prev.filter((a) => a.id !== id));
+
+    try {
+      await deleteVisionBoardItemApi(id);
+      toast.success('Item removed from board');
+    } catch {
+      if (deletedVisionItem && visionIndex >= 0) {
+        setVisionItems((prev) => {
+          if (prev.some((item) => item.id === id)) {
+            return prev;
+          }
+
+          const next = [...prev];
+          next.splice(Math.min(visionIndex, next.length), 0, deletedVisionItem);
+          return next;
+        });
+      }
+
+      if (deletedBoardEntry && boardIndex >= 0) {
+        setBoard((prev) => {
+          if (prev.some((item) => item.id === id)) {
+            return prev;
+          }
+
+          const next = [...prev];
+          next.splice(Math.min(boardIndex, next.length), 0, deletedBoardEntry);
+          return next;
+        });
+      }
+
+      if (deletedAffirmation && affirmationIndex >= 0) {
+        setAffirmations((prev) => {
+          if (prev.some((item) => item.id === id)) {
+            return prev;
+          }
+
+          const next = [...prev];
+          next.splice(Math.min(affirmationIndex, next.length), 0, deletedAffirmation);
+          return next;
+        });
+      }
+
+      toast.error('Failed to remove item');
+    }
+  };
+
+  const addAffirmation = async () => {
+    if (!affirmation.trim() || !isAuthenticated) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const created = await createVisionBoardItemApi({
+        type: 'text',
+        content: affirmation.trim(),
+        category: 'Affirmation',
+        x: 0,
+        y: 0,
+        width: 4,
+        height: 1,
+      });
+      setVisionItems((prev) => [created, ...prev]);
+      setAffirmations((prev) => [...prev, { id: created.id, text: created.content }]);
       setAffirmation('');
+      toast.success('Affirmation added');
+    } catch {
+      toast.error('Failed to add affirmation');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const saveBoardChanges = async () => {
+    if (!isAuthenticated || visionItems.length === 0) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await Promise.all(
+        visionItems.map((item) =>
+          updateVisionBoardItemApi(item.id, {
+            type: item.type,
+            content: item.content,
+            category: item.category,
+            x: item.x,
+            y: item.y,
+            width: item.width,
+            height: item.height,
+          })
+        )
+      );
+      toast.success('Vision board saved');
+    } catch {
+      toast.error('Failed to save vision board');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -66,6 +241,21 @@ export default function VisionBoardPage() {
       </section>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
+        {loading && (
+          <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground text-sm mb-6">
+            Loading vision board...
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="bg-card border border-red-200 dark:border-red-900 rounded-2xl p-8 text-center mb-6">
+            <p className="text-sm text-red-500 mb-4">{error}</p>
+            <button onClick={() => void loadVisionBoard()} className="btn-primary text-sm px-4 py-2">Retry</button>
+          </div>
+        )}
+
+        {!loading && !error && (
+          <>
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Image Library */}
           <div className="lg:col-span-2">
@@ -140,7 +330,7 @@ export default function VisionBoardPage() {
                       >
                         <img src={img.src} alt={img.label} className="w-full h-full object-cover" />
                         <button
-                          onClick={() => removeFromBoard(img.id)}
+                          onClick={() => void removeFromBoard(img.id)}
                           className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                         >×</button>
                       </motion.div>
@@ -149,7 +339,7 @@ export default function VisionBoardPage() {
                 </div>
               )}
               {isAuthenticated && board.length > 0 && (
-                <button className="w-full mt-4 btn-primary text-sm">Save Board</button>
+                <button onClick={() => void saveBoardChanges()} className="w-full mt-4 btn-primary text-sm" disabled={submitting}>{submitting ? 'Saving...' : 'Save Board'}</button>
               )}
             </div>
 
@@ -157,10 +347,10 @@ export default function VisionBoardPage() {
             <div className="bg-card rounded-2xl border border-border p-6">
               <h2 className="font-bold text-lg mb-4 flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" /> Text Affirmations</h2>
               <div className="space-y-2 mb-4">
-                {affirmations.map((a, i) => (
-                  <div key={i} className="flex items-start gap-2 p-2 bg-muted/50 rounded-lg">
+                {affirmations.map((a) => (
+                  <div key={a.id} className="flex items-start gap-2 p-2 bg-muted/50 rounded-lg">
                     <span className="text-primary text-xs mt-0.5">★</span>
-                    <p className="text-sm italic">{a}</p>
+                    <p className="text-sm italic">{a.text}</p>
                   </div>
                 ))}
               </div>
@@ -173,7 +363,7 @@ export default function VisionBoardPage() {
                     placeholder="Add your affirmation..."
                     className="flex-1 text-sm px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
                   />
-                  <button onClick={addAffirmation} className="btn-primary text-sm px-4 py-2">+</button>
+                  <button onClick={() => void addAffirmation()} className="btn-primary text-sm px-4 py-2" disabled={submitting}>+</button>
                 </div>
               )}
             </div>
@@ -189,6 +379,8 @@ export default function VisionBoardPage() {
             )}
           </div>
         </div>
+          </>
+        )}
       </div>
       <Footer />
     </div>

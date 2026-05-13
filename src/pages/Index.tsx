@@ -7,8 +7,10 @@ import {
   Activity
 } from 'lucide-react';
 import Navbar from '@/components/layout/Navbar';
+import { useAuth } from '@/hooks/useAuth';
 import Footer from '@/components/layout/Footer';
 import { FEATURES, MOTIVATIONAL_QUOTES, TESTIMONIALS, PRICING_PLANS } from '@/constants';
+import { getContentApi, getPlansApi, type PlanItem } from '@/lib/api/adminApi';
 import hero1 from '@/assets/hero-1.jpg';
 import hero2 from '@/assets/hero-2.jpg';
 import hero3 from '@/assets/hero-3.jpg';
@@ -68,8 +70,9 @@ const FAQ_ITEMS = [
   },
 ];
 
-function HeroSection() {
+function HeroSection({ content }: { content: { heroTitle: string; heroSubtitle: string } }) {
   const [current, setCurrent] = useState(0);
+  const { user } = useAuth();
 
   useEffect(() => {
     const timer = setInterval(() => setCurrent((prev) => (prev + 1) % HERO_SLIDES.length), 5000);
@@ -109,12 +112,16 @@ function HeroSection() {
               transition={{ duration: 0.6 }}
             >
               <h1 className="font-display text-5xl md:text-7xl font-bold text-white mb-4 leading-tight">
-                {HERO_SLIDES[current].headline}
-                <br />
-                <span className="text-gradient-gold">{HERO_SLIDES[current].highlight}</span>
+                {content.heroTitle || (
+                  <>
+                    {HERO_SLIDES[current].headline}
+                    <br />
+                    <span className="text-gradient-gold">{HERO_SLIDES[current].highlight}</span>
+                  </>
+                )}
               </h1>
               <p className="text-lg text-white/80 mb-8 leading-relaxed max-w-xl">
-                {HERO_SLIDES[current].sub}
+                {content.heroSubtitle || HERO_SLIDES[current].sub}
               </p>
             </motion.div>
           </AnimatePresence>
@@ -125,9 +132,20 @@ function HeroSection() {
             transition={{ delay: 0.3 }}
             className="flex flex-col sm:flex-row gap-4"
           >
-            <Link to="/register" className="btn-gold flex items-center justify-center gap-2 text-base">
-              Start Free Today <ArrowRight className="w-4 h-4" />
-            </Link>
+            {!user ? (
+              <Link to="/register" className="btn-gold flex items-center justify-center gap-2 text-base">
+                Start Free Today <ArrowRight className="w-4 h-4" />
+              </Link>
+            ) : (
+              <button
+                className="btn-gold flex items-center justify-center gap-2 text-base opacity-50 cursor-not-allowed"
+                disabled
+                aria-disabled="true"
+                title="You are already signed in"
+              >
+                Start Free Today <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
             <button
               onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
               className="flex items-center justify-center gap-2 px-6 py-3 bg-white/10 backdrop-blur-sm border border-white/25 text-white rounded-lg font-semibold hover:bg-white/20 transition-all"
@@ -614,7 +632,7 @@ function TestimonialsSection() {
           <p className="text-muted-foreground max-w-xl mx-auto">Join thousands who have transformed their lives with DreamCarta.</p>
         </motion.div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {TESTIMONIALS.map((t, i) => (
+          {TESTIMONIALS.slice(0, 4).map((t, i) => (
             <motion.div
               key={t.id}
               initial={{ opacity: 0, y: 30 }}
@@ -691,6 +709,22 @@ function CommunityPreview() {
 function PricingSection() {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
+  const [plans, setPlans] = useState<PlanItem[]>([]);
+  const [loadingPlans, setLoadingPlans] = useState(true);
+
+  useEffect(() => {
+    const loadPlans = async () => {
+      try {
+        const data = await getPlansApi();
+        setPlans(data.length > 0 ? data : PRICING_PLANS);
+      } catch {
+        setPlans(PRICING_PLANS);
+      } finally {
+        setLoadingPlans(false);
+      }
+    };
+    void loadPlans();
+  }, []);
 
   return (
     <section ref={ref} className="section-padding bg-muted/30">
@@ -702,8 +736,15 @@ function PricingSection() {
           </h2>
           <p className="text-muted-foreground max-w-xl mx-auto">Start free, upgrade when you need more. No hidden fees, cancel anytime.</p>
         </motion.div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {PRICING_PLANS.map((plan, i) => (
+        {loadingPlans ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-96 rounded-2xl bg-muted animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {plans.map((plan, i) => (
             <motion.div
               key={plan.id}
               initial={{ opacity: 0, y: 30 }}
@@ -741,8 +782,9 @@ function PricingSection() {
                 ))}
               </ul>
             </motion.div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
         <div className="text-center mt-8">
           <Link to="/pricing" className="text-primary hover:underline text-sm font-medium">
             View full comparison →
@@ -853,6 +895,7 @@ function FAQSection() {
 function CTASection() {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
+  const { user } = useAuth();
 
   return (
     <section ref={ref} className="section-padding bg-muted/30">
@@ -868,9 +911,15 @@ function CTASection() {
               Join 2.5 million dreamers who are using DreamCarta to design and live their best lives.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link to="/register" className="btn-gold flex items-center justify-center gap-2">
-                Start Free Today <ArrowRight className="w-4 h-4" />
-              </Link>
+              {!user ? (
+                <Link to="/register" className="btn-gold flex items-center justify-center gap-2">
+                  Start Free Today <ArrowRight className="w-4 h-4" />
+                </Link>
+              ) : (
+                <button className="btn-gold flex items-center justify-center gap-2 opacity-50 cursor-not-allowed" disabled aria-disabled="true" title="You are already signed in">
+                  Start Free Today <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
               <Link to="/about" className="flex items-center justify-center gap-2 px-6 py-3 bg-white/15 border border-white/25 text-white rounded-lg font-semibold hover:bg-white/25 transition-all">
                 Learn More <ChevronRight className="w-4 h-4" />
               </Link>
@@ -884,10 +933,19 @@ function CTASection() {
 }
 
 export default function HomePage() {
+  const [content, setContent] = useState({
+    heroTitle: '',
+    heroSubtitle: '',
+  });
+
+  useEffect(() => {
+    getContentApi().then(setContent);
+  }, []);
+
   return (
     <div>
       <Navbar />
-      <HeroSection />
+      <HeroSection content={content} />
       <StatsSection />
       <FeaturesSection />
       <VisionBoardPreview />

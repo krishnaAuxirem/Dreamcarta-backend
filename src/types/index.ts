@@ -2,7 +2,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'user' | 'admin';
+  role: 'user' | 'mentor' | 'admin';
   avatar?: string;
   profession?: string;
   bio?: string;
@@ -77,6 +77,15 @@ export interface CommunityPost {
   shares: number;
   liked: boolean;
   tags: string[];
+  commentsList?: CommunityComment[];
+  createdAt: string;
+}
+
+export interface CommunityComment {
+  id: string;
+  author: string;
+  authorAvatar?: string;
+  content: string;
   createdAt: string;
 }
 

@@ -41,6 +41,21 @@
       "description": "Life Goals, Vision Board & Manifestation Platform"
     }
     </script>
+    <script>
+      (function () {
+        try {
+          var savedTheme = localStorage.getItem('dc_theme');
+          var root = document.documentElement;
+          if (savedTheme === 'dark') {
+            root.classList.add('dark');
+          } else {
+            root.classList.remove('dark');
+          }
+        } catch (e) {
+          // Ignore localStorage access issues and keep default light theme.
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

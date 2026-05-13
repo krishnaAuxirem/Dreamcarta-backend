@@ -15,6 +15,7 @@ export default function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' });
+  const [role, setRole] = useState<'user' | 'mentor' | 'admin'>('user');
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,12 +27,14 @@ export default function RegisterPage() {
     if (form.password.length < 6) { setError('Password must be at least 6 characters'); return; }
     setLoading(true);
     await new Promise((r) => setTimeout(r, 800));
-    const success = register(form.name, form.email, form.password);
+    const result = await register(form.name, form.email, form.password, {
+      role,
+    });
     setLoading(false);
-    if (success) {
-      navigate('/login');
+    if (result.success) {
+      navigate(role === 'admin' ? '/admin/login' : '/login');
     } else {
-      setError('This email is already registered. Please login instead.');
+      setError(result.error || 'This email is already registered. Please login instead.');
     }
   };
 
@@ -81,6 +84,39 @@ export default function RegisterPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
+              <label className="block text-sm font-medium mb-2">Register as</label>
+              <div className="flex bg-muted rounded-lg p-1 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setRole('user')}
+                  className={`flex-1 py-2 text-sm rounded-md ${
+                    role === 'user' ? 'bg-indigo-500 text-white' : 'text-muted-foreground'
+                  }`}
+                >
+                  User
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole('mentor')}
+                  className={`flex-1 py-2 text-sm rounded-md ${
+                    role === 'mentor' ? 'bg-indigo-500 text-white' : 'text-muted-foreground'
+                  }`}
+                >
+                  Mentor
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole('admin')}
+                  className={`flex-1 py-2 text-sm rounded-md ${
+                    role === 'admin' ? 'bg-indigo-500 text-white' : 'text-muted-foreground'
+                  }`}
+                >
+                  Admin
+                </button>
+              </div>
+            </div>
+
+            <div>
               <label className="block text-sm font-medium mb-1">Full Name *</label>
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="John Doe" required className="w-full px-4 py-3 rounded-xl border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
             </div>
@@ -106,20 +142,6 @@ export default function RegisterPage() {
               {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <>Create Account <ArrowRight className="w-4 h-4" /></>}
             </button>
           </form>
-
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
-            <div className="relative flex justify-center"><span className="bg-background px-4 text-xs text-muted-foreground">Or register with</span></div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            {['Google', 'Apple', 'Twitter'].map((p) => (
-              <button key={p} onClick={() => alert(`${p} OAuth coming soon`)} className="flex items-center justify-center gap-2 py-2.5 border border-border rounded-xl hover:bg-muted transition-colors text-sm font-medium">
-                <span>{p === 'Google' ? '🇬' : p === 'Apple' ? '🍎' : '🐦'}</span>
-                <span className="hidden sm:block">{p}</span>
-              </button>
-            ))}
-          </div>
 
           <p className="text-center text-xs text-muted-foreground mt-6">
             By creating an account, you agree to our{' '}

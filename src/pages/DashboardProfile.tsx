@@ -1,20 +1,76 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Camera, Save, User, Mail, Briefcase, Edit3, Target, Flame, Zap, Image, Bot, Users } from 'lucide-react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/hooks/useAuth';
-import { updateUser } from '@/lib/auth';
-import { DEMO_GOALS, DEMO_HABITS } from '@/constants';
+import { getGoalsApi } from '@/lib/api/goalsApi';
+import { getHabitsApi } from '@/lib/api/habitsApi';
+import { getVisionBoardItemsApi } from '@/lib/api/visionBoardApi';
+import { getCommunityPostsApi } from '@/lib/api/communityApi';
+import { getAllActivityApi, type ActivityRecord } from '@/lib/api/activityApi';
+
+const ACTIVITY_ICON_MAP: Record<string, { Icon: any; label: string }> = {
+  habit_created: { Icon: Zap, label: 'Habit' },
+  habit_completed: { Icon: Zap, label: 'Habit' },
+  goal_created: { Icon: Target, label: 'Goal' },
+  goal_updated: { Icon: Target, label: 'Goal' },
+  vision_board_updated: { Icon: Image, label: 'Vision Board' },
+  post_created: { Icon: Users, label: 'Community' },
+  ai_chat: { Icon: Bot, label: 'AI Coach' },
+  journal_saved: { Icon: Flame, label: 'Journal' },
+};
 
 export default function DashboardProfilePage() {
-  const { user, setUser } = useAuth();
+  const { user, setUser, updateProfile } = useAuth();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ name: user?.name || '', profession: user?.profession || '', bio: user?.bio || '' });
   const [saved, setSaved] = useState(false);
+  const [goalsCount, setGoalsCount] = useState(0);
+  const [habitsCount, setHabitsCount] = useState(0);
+  const [visionBoardsCount, setVisionBoardsCount] = useState(0);
+  const [communityPostsCount, setCommunityPostsCount] = useState(0);
+  const [aiChatsCount, setAiChatsCount] = useState(0);
+  const [recentActivity, setRecentActivity] = useState<ActivityRecord[]>([]);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState('');
 
-  const handleSave = () => {
-    const updated = updateUser(form);
-    if (updated && setUser) setUser(updated);
+  const loadStats = async () => {
+    try {
+      setStatsLoading(true);
+      setStatsError('');
+      const [goals, habits, visionItems, communityPosts, activities] = await Promise.all([
+        getGoalsApi(),
+        getHabitsApi(),
+        getVisionBoardItemsApi(),
+        getCommunityPostsApi(),
+        getAllActivityApi(undefined, 50),
+      ]);
+
+      setGoalsCount(goals.length);
+      setHabitsCount(habits.length);
+      setVisionBoardsCount(visionItems.filter((item) => item.type === 'image').length);
+      setCommunityPostsCount(communityPosts.filter((post) => post.author === user?.name || post.author === user?.email).length);
+      setAiChatsCount(activities.filter((activity) => activity.type.includes('ai')).length);
+      setRecentActivity(activities.filter((activity) => !user || activity.user.email === user.email || activity.user.name === user.name).slice(0, 5));
+    } catch {
+      setStatsError('Failed to load profile stats.');
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadStats();
+  }, []);
+
+  const handleSave = async () => {
+    const success = await updateProfile?.({ name: form.name, profession: form.profession, bio: form.bio });
+    if (!success) {
+      return;
+    }
+    if (user && setUser) {
+      setUser({ ...user, ...form });
+    }
     setEditing(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
@@ -31,7 +87,6 @@ export default function DashboardProfilePage() {
           </div>
         )}
 
-        {/* Profile card */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-card border border-border rounded-2xl overflow-hidden">
           <div className="h-28 gradient-hero relative" />
           <div className="px-6 pb-6">
@@ -66,7 +121,7 @@ export default function DashboardProfilePage() {
                   <label className="block text-xs font-medium mb-1 text-muted-foreground">Bio</label>
                   <textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} rows={3} placeholder="Tell your story..." className="w-full px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary text-sm resize-none" />
                 </div>
-                <button onClick={handleSave} className="btn-primary text-sm px-5 py-2 flex items-center gap-2">
+                <button onClick={() => void handleSave()} className="btn-primary text-sm px-5 py-2 flex items-center gap-2">
                   <Save className="w-3.5 h-3.5" /> Save Changes
                 </button>
               </div>
@@ -91,17 +146,23 @@ export default function DashboardProfilePage() {
           </div>
         </motion.div>
 
-        {/* Stats */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-card border border-border rounded-2xl p-6">
           <h3 className="font-bold text-base mb-4">Your Journey Stats</h3>
+          {statsLoading && <p className="text-sm text-muted-foreground mb-3">Loading stats...</p>}
+          {!statsLoading && statsError && (
+            <div className="mb-3">
+              <p className="text-sm text-red-500 mb-2">{statsError}</p>
+              <button onClick={() => void loadStats()} className="btn-primary text-sm px-4 py-2">Retry</button>
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-4">
             {[
-              { label: 'Goals Set', value: DEMO_GOALS.length, Icon: Target },
-              { label: 'Habits Built', value: DEMO_HABITS.length, Icon: Flame },
+              { label: 'Goals Set', value: goalsCount, Icon: Target },
+              { label: 'Habits Built', value: habitsCount, Icon: Flame },
               { label: 'Day Streak', value: user.streak, Icon: Zap },
-              { label: 'Vision Boards', value: 3, Icon: Image },
-              { label: 'AI Chats', value: 47, Icon: Bot },
-              { label: 'Community Posts', value: 12, Icon: Users },
+              { label: 'Vision Boards', value: visionBoardsCount, Icon: Image },
+              { label: 'AI Chats', value: aiChatsCount, Icon: Bot },
+              { label: 'Community Posts', value: communityPostsCount, Icon: Users },
             ].map((s) => (
               <div key={s.label} className="text-center p-3 bg-muted/30 rounded-xl">
                 <s.Icon className="w-5 h-5 text-primary mx-auto mb-1" />
@@ -112,26 +173,26 @@ export default function DashboardProfilePage() {
           </div>
         </motion.div>
 
-        {/* Recent Activity */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="bg-card border border-border rounded-2xl p-6">
           <h3 className="font-bold text-base mb-4">Recent Activity</h3>
-          <div className="space-y-3">
-            {[
-              { action: 'Completed meditation habit', time: '2 hours ago', Icon: Zap },
-              { action: 'Updated goal: Run Half Marathon (60%)', time: '1 day ago', Icon: Target },
-              { action: 'Added Japan travel goal', time: '2 days ago', Icon: Target },
-              { action: 'Shared achievement in Community', time: '3 days ago', Icon: Users },
-              { action: 'Created new vision board', time: '1 week ago', Icon: Image },
-            ].map((a, i) => (
-              <div key={i} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
-                <a.Icon className="w-5 h-5 text-primary shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm">{a.action}</p>
-                  <p className="text-xs text-muted-foreground">{a.time}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          {recentActivity.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No recent activity found.</p>
+          ) : (
+            <div className="space-y-3">
+              {recentActivity.map((activity) => {
+                const mapped = ACTIVITY_ICON_MAP[activity.type] ?? { Icon: Users, label: activity.type.replace(/_/g, ' ') };
+                return (
+                  <div key={activity.id} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
+                    <mapped.Icon className="w-5 h-5 text-primary shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm">{activity.description}</p>
+                      <p className="text-xs text-muted-foreground">{mapped.label} · {new Date(activity.createdAt).toLocaleString()}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </motion.div>
       </div>
     </DashboardLayout>

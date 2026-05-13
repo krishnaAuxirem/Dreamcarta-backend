@@ -1,32 +1,61 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Save, Bell, Shield, Palette, Globe } from 'lucide-react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { useTheme } from '@/hooks/useTheme';
+import { getUserSettingsApi, updateUserSettingsApi } from '@/lib/api/userApi';
+
+const defaultSettings = {
+  emailNotifications: true,
+  goalReminders: true,
+  habitReminders: true,
+  weeklyReport: true,
+  communityUpdates: false,
+  marketingEmails: false,
+  twoFactor: false,
+  publicProfile: true,
+  showGoals: true,
+  showHabits: false,
+  language: 'en',
+  timezone: 'Asia/Kolkata',
+};
 
 export default function DashboardSettingsPage() {
   const { theme, toggleTheme } = useTheme();
-  const [settings, setSettings] = useState({
-    emailNotifications: true,
-    goalReminders: true,
-    habitReminders: true,
-    weeklyReport: true,
-    communityUpdates: false,
-    marketingEmails: false,
-    twoFactor: false,
-    publicProfile: true,
-    showGoals: true,
-    showHabits: false,
-    language: 'en',
-    timezone: 'Asia/Kolkata',
-  });
+  const [settings, setSettings] = useState(defaultSettings);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const response = await getUserSettingsApi();
+        setSettings((previous) => ({
+          ...previous,
+          ...(response?.settings || {}),
+        }));
+      } catch {
+        setSettings(defaultSettings);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadSettings();
+  }, []);
 
   const toggle = (key: keyof typeof settings) => setSettings({ ...settings, [key]: !settings[key] });
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateUserSettingsApi(settings);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const Switch = ({ checked, onChange }: { checked: boolean; onChange: () => void }) => (
@@ -38,6 +67,11 @@ export default function DashboardSettingsPage() {
   return (
     <DashboardLayout title="Settings">
       <div className="space-y-6 max-w-2xl">
+        {loading && (
+          <div className="p-4 bg-muted/40 border border-border rounded-xl text-sm text-muted-foreground">
+            Loading saved settings...
+          </div>
+        )}
         {saved && (
           <div className="p-4 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 text-green-700 dark:text-green-400 rounded-xl text-sm">
             ✅ Settings saved successfully!
@@ -150,8 +184,8 @@ export default function DashboardSettingsPage() {
           </div>
         </motion.div>
 
-        <button onClick={handleSave} className="btn-primary flex items-center gap-2 px-6 py-3">
-          <Save className="w-4 h-4" /> Save All Settings
+        <button onClick={() => void handleSave()} disabled={saving || loading} className="btn-primary flex items-center gap-2 px-6 py-3 disabled:opacity-60 disabled:cursor-not-allowed">
+          <Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Save All Settings'}
         </button>
 
         {/* Danger zone */}

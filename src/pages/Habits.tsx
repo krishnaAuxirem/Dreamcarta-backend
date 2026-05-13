@@ -1,48 +1,126 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { Plus, CheckCircle, Bell, Flame, Trash2, Lock } from 'lucide-react';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import { useAuth } from '@/hooks/useAuth';
-import { DEMO_HABITS, HABIT_CATEGORIES } from '@/constants';
+import { HABIT_CATEGORIES } from '@/constants';
 import { Habit } from '@/types';
-import { generateId } from '@/lib/utils';
+import { checkInHabitApi, createHabitApi, deleteHabitApi, getHabitsApi } from '@/lib/api/habitsApi';
+import { toast } from '@/components/ui/sonner';
 
 const HABIT_COLORS = ['bg-purple-500', 'bg-blue-500', 'bg-green-500', 'bg-orange-500', 'bg-pink-500', 'bg-indigo-500'];
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export default function HabitsPage() {
   const { isAuthenticated } = useAuth();
-  const [habits, setHabits] = useState<Habit[]>(DEMO_HABITS);
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', category: 'Mindfulness', frequency: 'daily' as 'daily' | 'weekly', reminderTime: '08:00' });
 
-  const toggleHabit = (id: string) => {
-    setHabits(habits.map((h) => h.id === id ? { ...h, completedToday: !h.completedToday, streak: !h.completedToday ? h.streak + 1 : Math.max(0, h.streak - 1) } : h));
+  const loadHabits = async () => {
+    if (!isAuthenticated) {
+      setHabits([]);
+      setError('');
+      setLoading(false);
+      return;
+    }
+    try {
+      setLoading(true);
+      setError('');
+      const data = await getHabitsApi();
+      setHabits(data);
+    } catch {
+      setError('Failed to load habits ❌');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const deleteHabit = (id: string) => setHabits(habits.filter((h) => h.id !== id));
+  useEffect(() => {
+    void loadHabits();
+  }, [isAuthenticated]);
 
-  const addHabit = (e: React.FormEvent) => {
+  const toggleHabit = async (id: string) => {
+    const previousHabit = habits.find((habit) => habit.id === id);
+    if (!previousHabit) {
+      return;
+    }
+
+    setHabits((prev) =>
+      prev.map((habit) => {
+        if (habit.id !== id) {
+          return habit;
+        }
+
+        const nextCompleted = !habit.completedToday;
+        return {
+          ...habit,
+          completedToday: nextCompleted,
+          streak: nextCompleted ? habit.streak + 1 : Math.max(0, habit.streak - 1),
+        };
+      })
+    );
+
+    try {
+      const updated = await checkInHabitApi(id);
+      setHabits((prev) => prev.map((habit) => (habit.id === id ? updated : habit)));
+      toast.success('Habit check-in updated');
+    } catch {
+      setHabits((prev) => prev.map((habit) => (habit.id === id ? previousHabit : habit)));
+      toast.error('Failed to update habit check-in');
+    }
+  };
+
+  const deleteHabit = async (id: string) => {
+    const deletedHabit = habits.find((habit) => habit.id === id);
+    const deletedIndex = habits.findIndex((habit) => habit.id === id);
+    if (!deletedHabit || deletedIndex < 0) {
+      return;
+    }
+
+    setHabits((prev) => prev.filter((h) => h.id !== id));
+
+    try {
+      await deleteHabitApi(id);
+      toast.success('Habit deleted');
+    } catch {
+      setHabits((prev) => {
+        if (prev.some((habit) => habit.id === id)) {
+          return prev;
+        }
+
+        const next = [...prev];
+        next.splice(Math.min(deletedIndex, next.length), 0, deletedHabit);
+        return next;
+      });
+      toast.error('Failed to delete habit');
+    }
+  };
+
+  const addHabit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newHabit: Habit = {
-      id: generateId(),
-      ...form,
-      streak: 0,
-      completedToday: false,
-      completedDates: [],
-      createdAt: new Date().toISOString().split('T')[0],
-      color: HABIT_COLORS[Math.floor(Math.random() * HABIT_COLORS.length)],
-    };
-    setHabits([newHabit, ...habits]);
-    setShowForm(false);
-    setForm({ title: '', description: '', category: 'Mindfulness', frequency: 'daily', reminderTime: '08:00' });
+    try {
+      setSubmitting(true);
+      const created = await createHabitApi(form);
+      setHabits((prev) => [created, ...prev]);
+      setShowForm(false);
+      setForm({ title: '', description: '', category: 'Mindfulness', frequency: 'daily', reminderTime: '08:00' });
+      toast.success('Habit created successfully');
+    } catch {
+      toast.error('Failed to create habit');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const completedToday = habits.filter((h) => h.completedToday).length;
   const totalStreak = habits.reduce((a, h) => a + h.streak, 0);
-  const longestStreak = Math.max(...habits.map((h) => h.streak));
+  const longestStreak = habits.length ? Math.max(...habits.map((h) => h.streak)) : 0;
 
   return (
     <div>
@@ -86,6 +164,21 @@ export default function HabitsPage() {
       </section>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
+        {loading && (
+          <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground text-sm mb-6">
+            Loading habits...
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="bg-card border border-red-200 dark:border-red-900 rounded-2xl p-8 text-center mb-6">
+            <p className="text-sm text-red-500 mb-4">{error}</p>
+            <button onClick={() => void loadHabits()} className="btn-primary text-sm px-4 py-2">Retry</button>
+          </div>
+        )}
+
+        {!loading && !error && (
+          <>
         {/* Progress bar for today */}
         <div className="bg-card border border-border rounded-xl p-4 mb-6">
           <div className="flex items-center justify-between mb-2">
@@ -174,6 +267,15 @@ export default function HabitsPage() {
           </AnimatePresence>
         </div>
 
+        {habits.length === 0 && (
+          <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground text-sm mt-6">
+            {isAuthenticated ? 'No habits yet. Add your first habit.' : 'Login to track your habits.'}
+          </div>
+        )}
+
+          </>
+        )}
+
         {!isAuthenticated && (
           <div className="mt-8 bg-gradient-to-br from-primary to-accent rounded-2xl p-8 text-white text-center">
             <h3 className="font-display text-2xl font-bold mb-2">Track Your Habits</h3>
@@ -219,7 +321,7 @@ export default function HabitsPage() {
                 </div>
                 <div className="flex gap-3 pt-2">
                   <button type="button" onClick={() => setShowForm(false)} className="flex-1 py-2.5 text-sm border border-border rounded-lg hover:bg-muted transition-colors">Cancel</button>
-                  <button type="submit" className="flex-1 btn-primary text-sm py-2.5">Add Habit</button>
+                  <button disabled={submitting} type="submit" className="flex-1 btn-primary text-sm py-2.5">{submitting ? 'Adding...' : 'Add Habit'}</button>
                 </div>
               </form>
             </motion.div>

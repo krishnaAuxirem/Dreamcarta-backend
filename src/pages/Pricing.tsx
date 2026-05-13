@@ -1,14 +1,54 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useInView } from 'framer-motion';
 import { CheckCircle2, ArrowRight } from 'lucide-react';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
+import { subscribePlanApi, getPlansApi, type PlanItem } from '@/lib/api/adminApi';
 import { PRICING_PLANS } from '@/constants';
+import toast from 'react-hot-toast';
+import { useAuth } from '@/hooks/useAuth';
+import getApiErrorMessage from '@/lib/api/getApiErrorMessage';
 
 export default function PricingPage() {
+  const { user } = useAuth();
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
+  const [plans, setPlans] = useState<PlanItem[]>([]);
+  const [loadingPlans, setLoadingPlans] = useState(true);
+  const [subscribingPlanId, setSubscribingPlanId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadPlans = async () => {
+      setLoadingPlans(true);
+      try {
+        const data = await getPlansApi();
+        setPlans(data.length > 0 ? data : PRICING_PLANS);
+      } catch {
+        setPlans(PRICING_PLANS);
+      } finally {
+        setLoadingPlans(false);
+      }
+    };
+    void loadPlans();
+  }, []);
+
+  const handleSubscribe = async (plan: typeof PRICING_PLANS[0]) => {
+    if (!user) {
+      toast.info('Please login to subscribe');
+      return;
+    }
+
+    setSubscribingPlanId(plan.id);
+    try {
+      await subscribePlanApi(plan.id);
+      toast.success(`Subscribed to ${plan.name}`);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Subscription failed'));
+    } finally {
+      setSubscribingPlanId(null);
+    }
+  };
 
   return (
     <div>
@@ -18,7 +58,7 @@ export default function PricingPage() {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <span className="text-amber-400 text-sm font-semibold uppercase tracking-widest">Pricing</span>
             <h1 className="font-display text-5xl md:text-6xl font-bold text-white mt-2 mb-4">
-              Invest in Your <span className="text-gradient-gold">Future</span>
+              Invest in Your <span className="text-gradient-gold">Dreams</span>
             </h1>
             <p className="text-white/70 text-xl">Start free, upgrade when ready. Cancel anytime.</p>
           </motion.div>
@@ -27,8 +67,16 @@ export default function PricingPage() {
 
       <section ref={ref} className="py-16 px-4">
         <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {PRICING_PLANS.map((plan, i) => (
+          {loadingPlans ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="h-72 rounded-2xl bg-muted animate-pulse" />
+              <div className="h-72 rounded-2xl bg-muted animate-pulse" />
+              <div className="h-72 rounded-2xl bg-muted animate-pulse" />
+              <div className="h-72 rounded-2xl bg-muted animate-pulse" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {plans.map((plan, i) => (
               <motion.div
                 key={plan.id}
                 initial={{ opacity: 0, y: 30 }}
@@ -49,17 +97,33 @@ export default function PricingPage() {
                     <>
                       <span className={`text-xl ${plan.highlighted ? 'text-white' : 'text-foreground'}`}>₹</span>
                       <span className={`text-4xl font-display font-bold ${plan.highlighted ? 'text-white' : 'text-foreground'}`}>{plan.price}</span>
-                      <span className={`${plan.highlighted ? 'text-white/70' : 'text-muted-foreground'} text-sm`}>/month</span>
+                      <span className={`${plan.highlighted ? 'text-white/70' : 'text-muted-foreground'} text-sm`}>/{plan.period}</span>
                     </>
                   )}
                 </div>
                 <p className={`text-sm mb-5 ${plan.highlighted ? 'text-white/70' : 'text-muted-foreground'}`}>{plan.description}</p>
-                <Link
-                  to="/register"
-                  className={`block text-center py-3 rounded-xl font-semibold mb-6 transition-all ${plan.highlighted ? 'bg-white text-primary hover:bg-white/90 shadow-lg' : 'bg-primary text-white hover:bg-primary/90'}`}
-                >
-                  {plan.price === 0 ? 'Start Free' : `Get ${plan.name}`} <ArrowRight className="inline w-4 h-4 ml-1" />
-                </Link>
+                {user ? (
+                  <button
+                    type="button"
+                    disabled={subscribingPlanId === plan.id}
+                    onClick={() => void handleSubscribe(plan)}
+                    className={`w-full text-center py-3 rounded-xl font-semibold mb-6 transition-all disabled:opacity-60 ${plan.highlighted ? 'bg-white text-primary hover:bg-white/90 shadow-lg' : 'bg-primary text-white hover:bg-primary/90'}`}
+                  >
+                    {subscribingPlanId === plan.id
+                      ? 'Processing...'
+                      : plan.price === 0
+                        ? 'Activate Free'
+                        : `Subscribe ${plan.name}`}{' '}
+                    <ArrowRight className="inline w-4 h-4 ml-1" />
+                  </button>
+                ) : (
+                  <Link
+                    to="/register"
+                    className={`block text-center py-3 rounded-xl font-semibold mb-6 transition-all ${plan.highlighted ? 'bg-white text-primary hover:bg-white/90 shadow-lg' : 'bg-primary text-white hover:bg-primary/90'}`}
+                  >
+                    {plan.price === 0 ? 'Start Free' : `Get ${plan.name}`} <ArrowRight className="inline w-4 h-4 ml-1" />
+                  </Link>
+                )}
                 <ul className="space-y-3">
                   {plan.features.map((feature) => (
                     <li key={feature} className={`flex items-start gap-2 text-sm ${plan.highlighted ? 'text-white/90' : 'text-muted-foreground'}`}>
@@ -70,7 +134,8 @@ export default function PricingPage() {
                 </ul>
               </motion.div>
             ))}
-          </div>
+            </div>
+          )}
 
           {/* Comparison table */}
           <div className="mt-16">
@@ -81,7 +146,7 @@ export default function PricingPage() {
                   <thead>
                     <tr className="border-b border-border">
                       <th className="text-left p-4 font-medium text-muted-foreground">Feature</th>
-                      {PRICING_PLANS.map((plan) => (
+                      {plans.map((plan) => (
                         <th key={plan.id} className={`p-4 text-center font-semibold ${plan.highlighted ? 'text-primary' : 'text-foreground'}`}>{plan.name}</th>
                       ))}
                     </tr>
@@ -101,7 +166,7 @@ export default function PricingPage() {
                       <tr key={i} className={`border-b border-border ${i % 2 === 0 ? 'bg-muted/20' : ''}`}>
                         <td className="p-4 text-sm text-muted-foreground">{row.feature}</td>
                         {row.values.map((val, j) => (
-                          <td key={j} className={`p-4 text-center text-sm ${PRICING_PLANS[j].highlighted ? 'font-semibold text-primary' : ''}`}>{val}</td>
+                          <td key={j} className={`p-4 text-center text-sm ${plans[j]?.highlighted ? 'font-semibold text-primary' : ''}`}>{val}</td>
                         ))}
                       </tr>
                     ))}

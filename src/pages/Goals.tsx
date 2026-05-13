@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { Plus, Target, Calendar, Trash2, Edit3, ChevronRight, Lock, Flame, CheckCircle2, TrendingUp, Rocket, Activity, DollarSign, BookOpen, Plane, Heart, Star } from 'lucide-react';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import { useAuth } from '@/hooks/useAuth';
-import { DEMO_GOALS, GOAL_CATEGORIES } from '@/constants';
+import { GOAL_CATEGORIES } from '@/constants';
 import { Goal } from '@/types';
-import { generateId, getProgressColor } from '@/lib/utils';
+import { getProgressColor } from '@/lib/utils';
+import { createGoalApi, deleteGoalApi, getGoalsApi, updateGoalApi } from '@/lib/api/goalsApi';
+import { toast } from '@/components/ui/sonner';
 
 const CATEGORY_COLORS: Record<string, string> = {
   career: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
@@ -31,37 +33,117 @@ const CATEGORY_ICON_MAP: Record<string, React.ReactNode> = {
 
 export default function GoalsPage() {
   const { isAuthenticated } = useAuth();
-  const [goals, setGoals] = useState<Goal[]>(DEMO_GOALS);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [filterCategory, setFilterCategory] = useState('all');
   const [form, setForm] = useState({ title: '', description: '', category: 'career', type: 'short-term', deadline: '', progress: 0 });
 
-  const filtered = filterCategory === 'all' ? goals : goals.filter((g) => g.category === filterCategory);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isAuthenticated) return;
-    if (editingGoal) {
-      setGoals(goals.map((g) => g.id === editingGoal.id ? { ...g, ...form } as Goal : g));
-    } else {
-      const newGoal: Goal = {
-        id: generateId(),
-        ...form,
-        category: form.category as Goal['category'],
-        type: form.type as Goal['type'],
-        steps: [],
-        status: 'active',
-        createdAt: new Date().toISOString().split('T')[0],
-      };
-      setGoals([newGoal, ...goals]);
+  const loadGoals = async () => {
+    if (!isAuthenticated) {
+      setGoals([]);
+      setLoading(false);
+      setError('');
+      return;
     }
-    setShowForm(false);
-    setEditingGoal(null);
-    setForm({ title: '', description: '', category: 'career', type: 'short-term', deadline: '', progress: 0 });
+
+    try {
+      setLoading(true);
+      setError('');
+      const data = await getGoalsApi();
+      setGoals(data);
+    } catch {
+      setError('Failed to load goals ❌');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const deleteGoal = (id: string) => setGoals(goals.filter((g) => g.id !== id));
+  useEffect(() => {
+    void loadGoals();
+  }, [isAuthenticated]);
+
+  const filtered = useMemo(
+    () => (filterCategory === 'all' ? goals : goals.filter((g) => g.category === filterCategory)),
+    [filterCategory, goals]
+  );
+
+  const averageProgress = goals.length
+    ? Math.round(goals.reduce((a, g) => a + g.progress, 0) / goals.length)
+    : 0;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAuthenticated) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      if (editingGoal) {
+        const updated = await updateGoalApi(editingGoal.id, {
+          title: form.title,
+          description: form.description,
+          category: form.category as Goal['category'],
+          type: form.type as Goal['type'],
+          deadline: form.deadline,
+          progress: form.progress,
+        });
+        setGoals((prev) => prev.map((goal) => (goal.id === updated.id ? updated : goal)));
+        toast.success('Goal updated successfully');
+      } else {
+        const created = await createGoalApi({
+          title: form.title,
+          description: form.description,
+          category: form.category as Goal['category'],
+          type: form.type as Goal['type'],
+          deadline: form.deadline,
+          progress: form.progress,
+          steps: [],
+          status: 'active',
+        });
+        setGoals((prev) => [created, ...prev]);
+        toast.success('Goal created successfully');
+      }
+
+      setShowForm(false);
+      setEditingGoal(null);
+      setForm({ title: '', description: '', category: 'career', type: 'short-term', deadline: '', progress: 0 });
+    } catch {
+      toast.error('Failed to save goal');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const deleteGoal = async (id: string) => {
+    const deletedGoal = goals.find((goal) => goal.id === id);
+    const deletedIndex = goals.findIndex((goal) => goal.id === id);
+    if (!deletedGoal || deletedIndex < 0) {
+      return;
+    }
+
+    setGoals((prev) => prev.filter((g) => g.id !== id));
+
+    try {
+      await deleteGoalApi(id);
+      toast.success('Goal deleted');
+    } catch {
+      setGoals((prev) => {
+        if (prev.some((goal) => goal.id === id)) {
+          return prev;
+        }
+
+        const next = [...prev];
+        next.splice(Math.min(deletedIndex, next.length), 0, deletedGoal);
+        return next;
+      });
+      toast.error('Failed to delete goal');
+    }
+  };
 
   const openEdit = (goal: Goal) => {
     setEditingGoal(goal);
@@ -98,7 +180,7 @@ export default function GoalsPage() {
               { label: 'Total Goals', value: goals.length, Icon: Target, color: 'text-primary' },
               { label: 'Active', value: goals.filter(g => g.status === 'active').length, Icon: Flame, color: 'text-orange-500' },
               { label: 'Completed', value: goals.filter(g => g.status === 'completed').length, Icon: CheckCircle2, color: 'text-green-500' },
-              { label: 'Avg Progress', value: `${Math.round(goals.reduce((a, g) => a + g.progress, 0) / goals.length)}%`, Icon: TrendingUp, color: 'text-blue-500' },
+              { label: 'Avg Progress', value: `${averageProgress}%`, Icon: TrendingUp, color: 'text-blue-500' },
             ].map((s, i) => (
               <div key={i} className="bg-card border border-border rounded-xl p-4">
                 <s.Icon className={`w-5 h-5 mb-1 ${s.color}`} />
@@ -111,6 +193,21 @@ export default function GoalsPage() {
       </section>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
+        {loading && (
+          <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground text-sm">
+            Loading goals...
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="bg-card border border-red-200 dark:border-red-900 rounded-2xl p-8 text-center">
+            <p className="text-sm text-red-500 mb-4">{error}</p>
+            <button onClick={() => void loadGoals()} className="btn-primary text-sm px-4 py-2">Retry</button>
+          </div>
+        )}
+
+        {!loading && !error && (
+          <>
         {/* Filters */}
         <div className="flex flex-wrap gap-2 mb-6">
           <button onClick={() => setFilterCategory('all')} className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${filterCategory === 'all' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'}`}>All</button>
@@ -195,6 +292,14 @@ export default function GoalsPage() {
             ))}
           </AnimatePresence>
         </div>
+
+        {filtered.length === 0 && (
+          <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground text-sm mt-6">
+            {isAuthenticated ? 'No goals found. Add your first goal.' : 'Login to view and manage your goals.'}
+          </div>
+        )}
+          </>
+        )}
       </div>
 
       {/* Add/Edit Modal */}
@@ -239,7 +344,7 @@ export default function GoalsPage() {
                 </div>
                 <div className="flex gap-3 pt-2">
                   <button type="button" onClick={() => { setShowForm(false); setEditingGoal(null); }} className="flex-1 py-2.5 text-sm font-medium border border-border rounded-lg hover:bg-muted transition-colors">Cancel</button>
-                  <button type="submit" className="flex-1 btn-primary text-sm py-2.5">{editingGoal ? 'Update Goal' : 'Add Goal'}</button>
+                  <button disabled={submitting} type="submit" className="flex-1 btn-primary text-sm py-2.5">{submitting ? 'Saving...' : editingGoal ? 'Update Goal' : 'Add Goal'}</button>
                 </div>
               </form>
             </motion.div>

@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, Heart, Share2, Sparkles, Trophy, BookOpen, Star, Sun } from 'lucide-react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { MOTIVATIONAL_QUOTES } from '@/constants';
+import { getAllActivityApi } from '@/lib/api/activityApi';
 
 const AFFIRMATIONS = [
   'I am worthy of all my biggest dreams and desires.',
@@ -27,9 +28,40 @@ export default function DashboardMotivationPage() {
   const [affirmIndex, setAffirmIndex] = useState(0);
   const [journalAnswers, setJournalAnswers] = useState<string[]>(MORNING_PROMPTS.map(() => ''));
   const [liked, setLiked] = useState(false);
+  const [quoteReads, setQuoteReads] = useState(0);
+  const [affirmationCount, setAffirmationCount] = useState(0);
+  const [journalCount, setJournalCount] = useState(0);
+  const [motivationScore, setMotivationScore] = useState('0/10');
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const activities = await getAllActivityApi(undefined, 100);
+        setQuoteReads(activities.filter((activity) => activity.type.includes('quote') || activity.type.includes('motivation')).length || activities.length);
+        setAffirmationCount(activities.filter((activity) => activity.type.includes('affirm')).length);
+        setJournalCount(activities.filter((activity) => activity.type.includes('journal')).length);
+        setMotivationScore(`${Math.min(10, Math.max(6, Math.round((activities.length / 10) * 2 + 6)))}/10`);
+      } catch {
+        setQuoteReads(0);
+        setAffirmationCount(0);
+        setJournalCount(0);
+        setMotivationScore('0/10');
+      }
+    };
+
+    void loadStats();
+  }, []);
 
   const nextQuote = () => setQuoteIndex((prev) => (prev + 1) % MOTIVATIONAL_QUOTES.length);
   const nextAffirm = () => setAffirmIndex((prev) => (prev + 1) % AFFIRMATIONS.length);
+
+  const saveJournal = () => {
+    const payload = {
+      answers: journalAnswers,
+      savedAt: new Date().toISOString(),
+    };
+    localStorage.setItem('dreamcarta:mood-journal', JSON.stringify(payload));
+  };
 
   return (
     <DashboardLayout title="Daily Motivation">
@@ -94,10 +126,10 @@ export default function DashboardMotivationPage() {
             </h3>
             <div className="space-y-3">
               {[
-                { label: 'Quotes Read', value: '142', Icon: BookOpen },
-                { label: 'Affirmations Done', value: '87', Icon: Sparkles },
-                { label: 'Journal Entries', value: '34', Icon: Sun },
-                { label: 'Motivation Score', value: '9.2/10', Icon: Star },
+                { label: 'Quotes Read', value: quoteReads, Icon: BookOpen },
+                { label: 'Affirmations Done', value: affirmationCount, Icon: Sparkles },
+                { label: 'Journal Entries', value: journalCount, Icon: Sun },
+                { label: 'Motivation Score', value: motivationScore, Icon: Star },
               ].map((stat) => (
                 <div key={stat.label} className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl">
                   <stat.Icon className="w-5 h-5 text-primary" />
@@ -132,7 +164,7 @@ export default function DashboardMotivationPage() {
               </div>
             ))}
           </div>
-          <button onClick={() => alert('Journal saved! Keep up the amazing work!')} className="mt-4 btn-primary text-sm px-6 py-2.5">
+          <button onClick={saveJournal} className="mt-4 btn-primary text-sm px-6 py-2.5">
             Save Journal Entry
           </button>
         </motion.div>

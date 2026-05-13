@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Target, Flame, Star, TrendingUp, Zap, Bot, User, Settings,
-  History, Users, LogOut, ChevronLeft, ChevronRight, Sparkles, Image
+  History, Users, LogOut, ChevronLeft, ChevronRight, Sparkles, Image, UserCheck
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,15 @@ const SIDEBAR_LINKS = [
   { label: 'Dream Tracker', path: '/dashboard/dreams', icon: Star },
   { label: 'Daily Motivation', path: '/dashboard/motivation', icon: Zap },
   { label: 'AI Coach', path: '/dashboard/ai-coach', icon: Bot },
+  { label: 'Find Mentor', path: '/dashboard/find-mentor', icon: UserCheck },
+  { label: 'Community', path: '/dashboard/community', icon: Users },
+  { label: 'History', path: '/dashboard/history', icon: History },
+  { label: 'Profile', path: '/dashboard/profile', icon: User },
+  { label: 'Settings', path: '/dashboard/settings', icon: Settings },
+];
+
+const MENTOR_SIDEBAR_LINKS = [
+  { label: 'Dashboard', path: '/mentor', icon: LayoutDashboard },
   { label: 'Community', path: '/dashboard/community', icon: Users },
   { label: 'History', path: '/dashboard/history', icon: History },
   { label: 'Profile', path: '/dashboard/profile', icon: User },
@@ -31,6 +40,10 @@ export default function DashboardSidebar({ collapsed, onToggle }: Props) {
   const { pathname } = useLocation();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const sidebarLinks = useMemo(
+    () => (user?.role === 'mentor' ? MENTOR_SIDEBAR_LINKS : SIDEBAR_LINKS),
+    [user?.role]
+  );
 
   const handleLogout = () => {
     logout();
@@ -104,7 +117,7 @@ export default function DashboardSidebar({ collapsed, onToggle }: Props) {
 
       {/* Nav links */}
       <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1">
-        {SIDEBAR_LINKS.map(({ label, path, icon: Icon }) => {
+        {sidebarLinks.map(({ label, path, icon: Icon }) => {
           const active = pathname === path || (path !== '/dashboard' && pathname.startsWith(path));
           return (
             <Link

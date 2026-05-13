@@ -1,8 +1,11 @@
 import { useState } from 'react';
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { MapPin, Phone, Mail, Send, Instagram, Linkedin, Twitter, Github } from 'lucide-react';
+import axios from 'axios';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
+import { useAuth } from '@/hooks/useAuth';
 
 const SOCIALS = [
   { icon: Instagram, label: 'Instagram', href: 'https://instagram.com', color: 'hover:text-pink-500 hover:border-pink-500' },
@@ -13,14 +16,37 @@ const SOCIALS = [
 ];
 
 export default function ContactPage() {
+  const { user } = useAuth();
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
-  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (user) {
+      setForm((previous) => ({
+        ...previous,
+        name: previous.name || user.name || '',
+        email: previous.email || user.email || '',
+      }));
+    }
+  }, [user]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
-    setTimeout(() => setSubmitted(false), 4000);
-    setForm({ name: '', email: '', subject: '', message: '' });
+    setLoading(true);
+
+    try {
+      await axios.post(`${import.meta.env.VITE_API_BASE_URL}/contact`, form);
+      alert('Message sent successfully ✅');
+      setForm({ name: '', email: '', subject: '', message: '' });
+    } catch {
+      alert('Failed to send ❌');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -42,25 +68,25 @@ export default function ContactPage() {
           {/* Contact form */}
           <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }}>
             <h2 className="font-display text-3xl font-bold mb-6">Send us a Message</h2>
-            {submitted && (
-              <div className="mb-4 p-4 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 text-green-700 dark:text-green-400 rounded-xl text-sm">
-                ✅ Message sent successfully! We will get back to you within 24 hours.
-              </div>
-            )}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Full Name *</label>
-                  <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="John Doe" required className="w-full px-4 py-3 rounded-xl border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
+                  <input name="name" value={form.name} onChange={handleChange} placeholder="John Doe" required className="w-full px-4 py-3 rounded-xl border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Email *</label>
-                  <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="john@example.com" required className="w-full px-4 py-3 rounded-xl border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
+                  <input type="email" name="email" value={form.email} onChange={handleChange} placeholder="john@example.com" required className="w-full px-4 py-3 rounded-xl border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
                 </div>
               </div>
+              {user && (
+                <p className="text-xs text-muted-foreground">
+                  Signed in as {user.name}. This message will be visible in admin contact inbox.
+                </p>
+              )}
               <div>
                 <label className="block text-sm font-medium mb-1">Subject *</label>
-                <select value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} required className="w-full px-4 py-3 rounded-xl border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary text-sm">
+                <select name="subject" value={form.subject} onChange={handleChange} required className="w-full px-4 py-3 rounded-xl border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary text-sm">
                   <option value="">Select a subject</option>
                   <option>General Inquiry</option>
                   <option>Technical Support</option>
@@ -72,10 +98,10 @@ export default function ContactPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Message *</label>
-                <textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="Tell us how we can help..." rows={5} required className="w-full px-4 py-3 rounded-xl border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary text-sm resize-none" />
+                <textarea name="message" value={form.message} onChange={handleChange} placeholder="Tell us how we can help..." rows={5} required className="w-full px-4 py-3 rounded-xl border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary text-sm resize-none" />
               </div>
-              <button type="submit" className="w-full btn-primary flex items-center justify-center gap-2">
-                <Send className="w-4 h-4" /> Send Message
+              <button type="submit" disabled={loading} className="w-full btn-primary flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+                <Send className="w-4 h-4" /> {loading ? 'Sending...' : 'Send Message'}
               </button>
             </form>
           </motion.div>
