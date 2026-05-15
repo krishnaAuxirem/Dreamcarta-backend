@@ -2,11 +2,23 @@ import dotenv from "dotenv";
 dotenv.config();
 import { Sequelize } from "sequelize";
 
-const dbName = process.env.DB_NAME || process.env.MYSQLDATABASE;
-const dbUser = process.env.DB_USER || process.env.MYSQLUSER;
-const dbPassword = process.env.DB_PASSWORD || process.env.MYSQLPASSWORD;
-const dbHost = process.env.DB_HOST || process.env.MYSQLHOST;
-const dbPort = Number(process.env.DB_PORT || process.env.MYSQLPORT || 3306);
+const isConnectionString = (value) => typeof value === "string" && /^mysqls?:\/\//i.test(value);
+
+const rawDbUrl =
+  process.env.DB_URL ||
+  process.env.DATABASE_URL ||
+  process.env.MYSQL_URL ||
+  process.env.MYSQL_PUBLIC_URL ||
+  process.env.DB_HOST ||
+  process.env.MYSQLHOST;
+
+const parsedDbUrl = isConnectionString(rawDbUrl) ? new URL(rawDbUrl) : null;
+
+const dbName = process.env.DB_NAME || process.env.MYSQLDATABASE || parsedDbUrl?.pathname?.replace(/^\//, "");
+const dbUser = process.env.DB_USER || process.env.MYSQLUSER || parsedDbUrl?.username;
+const dbPassword = process.env.DB_PASSWORD || process.env.MYSQLPASSWORD || parsedDbUrl?.password;
+const dbHost = process.env.DB_HOST || process.env.MYSQLHOST || parsedDbUrl?.hostname;
+const dbPort = Number(process.env.DB_PORT || process.env.MYSQLPORT || parsedDbUrl?.port || 3306);
 const sqliteStorage = process.env.DB_STORAGE || "./dreamcarta-dev.sqlite";
 
 const useSqliteFallback = process.env.DB_FALLBACK_TO_SQLITE !== "false";
@@ -14,7 +26,8 @@ const useSqliteFallback = process.env.DB_FALLBACK_TO_SQLITE !== "false";
 const useSsl = Boolean(
   process.env.DB_SSL === "true" ||
   process.env.MYSQLSSL === "true" ||
-  String(dbHost || "").includes("rlwy.net")
+  String(dbHost || "").includes("rlwy.net") ||
+  Boolean(parsedDbUrl)
 );
 
 const createMysqlSequelize = () =>
