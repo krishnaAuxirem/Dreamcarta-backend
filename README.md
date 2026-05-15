@@ -58,4 +58,36 @@ This project is built with:
 
 ## How can I deploy this project?
 
-Simply open [OnSpace]() and click on Share -> Publish.
+### Frontend on Render
+
+Use these settings for a Render Static Site:
+
+- Build command: `npm run build`
+- Publish directory: `dist`
+- Node version: 18 or newer
+- Environment variables:
+  - `VITE_API_BASE_URL` = your backend URL, for example `https://your-backend-domain.com/api`
+  - `VITE_FIREBASE_API_KEY`
+  - `VITE_FIREBASE_AUTH_DOMAIN`
+  - `VITE_FIREBASE_PROJECT_ID`
+  - `VITE_FIREBASE_STORAGE_BUCKET`
+  - `VITE_FIREBASE_MESSAGING_SENDER_ID`
+  - `VITE_FIREBASE_APP_ID`
+  - `VITE_FIREBASE_MEASUREMENT_ID`
+
+### Deploy flow
+
+1. Push the latest code to GitHub.
+2. Create a new Render Static Site from the repo.
+3. Set the build command and publish directory above.
+4. Add the environment variables from `.env.example` in Render.
+5. Deploy and verify the site loads without API errors.
+
+### Local development
+
+```sh
+npm i
+npm run dev
+```
+
+The app will use `/api` in local dev and `VITE_API_BASE_URL` in production.

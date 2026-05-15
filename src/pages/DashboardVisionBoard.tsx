@@ -1,6 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Image, Sparkles } from 'lucide-react';
+import { Image, Sparkles, Edit3, Trash2, BarChart3, Lightbulb } from 'lucide-react';
+const BOARD_STORAGE_KEY = 'dc_vision_board_metadata';
+
+interface BoardMetadata {
+  name: string;
+  description: string;
+  createdAt: string;
+}
+
+const loadBoardMetadata = (): BoardMetadata => {
+  try {
+    const raw = localStorage.getItem(BOARD_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : { name: 'My Dream Life', description: '', createdAt: new Date().toISOString() };
+  } catch {
+    return { name: 'My Dream Life', description: '', createdAt: new Date().toISOString() };
+  }
+};
+
+const saveBoardMetadata = (metadata: BoardMetadata) => {
+  localStorage.setItem(BOARD_STORAGE_KEY, JSON.stringify(metadata));
+};
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import {
   createVisionBoardItemApi,
@@ -34,10 +54,29 @@ export default function DashboardVisionBoardPage() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [affirmation, setAffirmation] = useState('');
   const [affirmations, setAffirmations] = useState<Array<{ id: string; text: string }>>([]);
-  const [boardName, setBoardName] = useState('My Dream Life');
+  const [boardMetadata, setBoardMetadata] = useState<BoardMetadata>(loadBoardMetadata());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [editingAffirmationId, setEditingAffirmationId] = useState<string | null>(null);
+  const [editingAffirmationText, setEditingAffirmationText] = useState('');
+  const [showBoardInfo, setShowBoardInfo] = useState(false);
+
+  const categoryStats = useMemo(() => {
+    const stats: Record<string, number> = {};
+    board.forEach(item => {
+      stats[item.category] = (stats[item.category] || 0) + 1;
+    });
+    return stats;
+  }, [board]);
+
+  const dailyFeaturedAffirmation = useMemo(() => {
+    if (affirmations.length === 0) return null;
+    const today = new Date().toDateString();
+    const seed = today.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const idx = seed % affirmations.length;
+    return affirmations[idx];
+  }, [affirmations]);
 
   const filtered = useMemo(
     () => (activeCategory === 'All' ? SAMPLE_IMAGES : SAMPLE_IMAGES.filter((i) => i.category === activeCategory)),
@@ -210,13 +249,72 @@ export default function DashboardVisionBoardPage() {
     }
   };
 
+  const editAffirmation = async (id: string) => {
+    if (!editingAffirmationText.trim()) {
+      return;
+    }
+    
+    try {
+      setSubmitting(true);
+      const affirmationToUpdate = affirmations.find(a => a.id === id);
+      if (!affirmationToUpdate) return;
+      
+      const visionItem = visionItems.find(v => v.id === id);
+      if (visionItem) {
+        await updateVisionBoardItemApi(id, {
+          type: 'text',
+          content: editingAffirmationText.trim(),
+          category: 'Affirmation',
+          x: visionItem.x,
+          y: visionItem.y,
+          width: visionItem.width,
+          height: visionItem.height,
+        });
+      }
+      setAffirmations(prev => prev.map(a => a.id === id ? { ...a, text: editingAffirmationText } : a));
+      setEditingAffirmationId(null);
+      setEditingAffirmationText('');
+      toast.success('Affirmation updated');
+    } catch {
+      toast.error('Failed to update affirmation');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const startEditAffirmation = (id: string, text: string) => {
+    setEditingAffirmationId(id);
+    setEditingAffirmationText(text);
+  };
+
+  const updateBoardMetadata = (metadata: Partial<BoardMetadata>) => {
+    const updated = { ...boardMetadata, ...metadata };
+    setBoardMetadata(updated);
+    saveBoardMetadata(updated);
+  };
+
   return (
     <DashboardLayout title="Vision Board">
       <div className="space-y-6">
         <div className="flex items-center gap-3">
-          <input value={boardName} onChange={(e) => setBoardName(e.target.value)} className="font-display text-2xl font-bold bg-transparent border-b-2 border-dashed border-border focus:border-primary outline-none flex-1" />
-          <button onClick={() => void saveBoard()} className="btn-primary text-sm px-4 py-2" disabled={submitting}>{submitting ? 'Saving...' : 'Save Board'}</button>
+          <div className="flex-1">
+            <input value={boardMetadata.name} onChange={(e) => updateBoardMetadata({ name: e.target.value })} className="font-display text-2xl font-bold bg-transparent border-b-2 border-dashed border-border focus:border-primary outline-none w-full" />
+            {boardMetadata.description && <p className="text-xs text-muted-foreground mt-1">{boardMetadata.description}</p>}
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <button onClick={() => setShowBoardInfo(!showBoardInfo)} className="flex items-center gap-1 text-sm px-3 py-2 border border-border rounded-lg hover:bg-muted transition-colors">
+              <BarChart3 className="w-4 h-4" /> Info
+            </button>
+            <button onClick={() => void saveBoard()} className="btn-primary text-sm px-4 py-2" disabled={submitting}>{submitting ? 'Saving...' : 'Save'}</button>
+          </div>
         </div>
+
+        {showBoardInfo && (
+          <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
+            <textarea value={boardMetadata.description} onChange={(e) => updateBoardMetadata({ description: e.target.value })} placeholder="Board description..." className="w-full text-sm px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary" rows={2} />
+            {Object.keys(categoryStats).length > 0 && <div className="pt-2 border-t border-border space-y-1"><p className="text-xs font-semibold text-muted-foreground">Vision Distribution:</p><div className="grid grid-cols-2 gap-2">{Object.entries(categoryStats).map(([cat, count]) => <div key={cat} className="text-xs flex justify-between px-2 py-1 bg-muted/50 rounded"><span>{cat}</span><span className="font-bold text-primary">{count}</span></div>)}</div></div>}
+          </div>
+        )}
 
         {loading && <div className="bg-card border border-border rounded-2xl p-6 text-center text-sm text-muted-foreground">Loading vision board...</div>}
         {!loading && error && (
@@ -285,10 +383,30 @@ export default function DashboardVisionBoardPage() {
                   <Sparkles className="w-3.5 h-3.5 text-primary" /> Affirmations
                 </h3>
                 <div className="space-y-2 mb-3">
+                  {dailyFeaturedAffirmation && (
+                    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="p-3 bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/30 rounded-lg mb-2">
+                      <p className="text-xs text-muted-foreground mb-1"><Lightbulb className="w-3 h-3 inline mr-1" />Today's Focus</p>
+                      <p className="text-sm italic text-foreground font-medium">"{dailyFeaturedAffirmation.text}"</p>
+                    </motion.div>
+                  )}
                   {affirmations.map((a) => (
-                    <div key={a.id} className="flex items-start gap-2 p-2 bg-muted/40 rounded-lg">
+                    <div key={a.id} className="flex items-start gap-2 p-2 bg-muted/40 rounded-lg group">
                       <span className="text-primary text-xs mt-0.5">★</span>
-                      <p className="text-xs italic">{a.text}</p>
+                       {editingAffirmationId === a.id ? (
+                         <div className="flex-1 flex gap-1">
+                           <input value={editingAffirmationText} onChange={(e) => setEditingAffirmationText(e.target.value)} className="flex-1 text-xs px-2 py-1 rounded border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary" />
+                           <button onClick={() => void editAffirmation(a.id)} className="text-xs px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600" disabled={submitting}>✓</button>
+                           <button onClick={() => setEditingAffirmationId(null)} className="text-xs px-2 py-1 border border-border rounded hover:bg-muted">✕</button>
+                         </div>
+                       ) : (
+                         <>
+                           <p className="text-xs italic flex-1">{a.text}</p>
+                           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                             <button onClick={() => startEditAffirmation(a.id, a.text)} className="text-xs text-muted-foreground hover:text-primary"><Edit3 className="w-3 h-3" /></button>
+                             <button onClick={() => void removeFromBoard(a.id)} className="text-xs text-muted-foreground hover:text-red-500"><Trash2 className="w-3 h-3" /></button>
+                           </div>
+                         </>
+                       )}
                     </div>
                   ))}
                 </div>

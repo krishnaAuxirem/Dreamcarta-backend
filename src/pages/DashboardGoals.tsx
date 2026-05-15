@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Calendar, Trash2, Edit3 } from 'lucide-react';
+import { Plus, Calendar, Trash2, Edit3, CheckCircle, AlertCircle, TrendingUp } from 'lucide-react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { GOAL_CATEGORIES } from '@/constants';
 import { Goal } from '@/types';
@@ -9,6 +9,21 @@ import { createGoalApi, deleteGoalApi, getGoalsApi, updateGoalApi } from '@/lib/
 import { toast } from '@/components/ui/sonner';
 
 import { Rocket, Activity, DollarSign, BookOpen, Plane, Heart, Star as StarIcon } from 'lucide-react';
+
+const GOAL_PRIORITY_STORAGE_KEY = 'dc_goal_priorities';
+const GOAL_STEP_COMPLETION_STORAGE_KEY = 'dc_goal_step_completion';
+
+type GoalPriority = 'high' | 'medium' | 'low';
+
+interface GoalPriorityMap {
+  [goalId: string]: GoalPriority;
+}
+
+interface StepCompletionMap {
+  [goalId: string]: {
+    [stepIndex: number]: boolean;
+  };
+}
 
 const CATEGORY_ICON_COMPONENTS: Record<string, React.ReactNode> = {
   career: <Rocket className="w-5 h-5" />,
@@ -22,6 +37,57 @@ const CATEGORY_ICON_COMPONENTS: Record<string, React.ReactNode> = {
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = CATEGORY_ICON_COMPONENTS;
 
+const PRIORITY_COLORS: Record<GoalPriority, string> = {
+  high: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  low: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+};
+
+const PRIORITY_BADGES: Record<GoalPriority, string> = {
+  high: '🔴 High',
+  medium: '🟡 Medium',
+  low: '🟢 Low',
+};
+
+const loadGoalPriorities = (): GoalPriorityMap => {
+  try {
+    const raw = localStorage.getItem(GOAL_PRIORITY_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveGoalPriorities = (map: GoalPriorityMap) => {
+  localStorage.setItem(GOAL_PRIORITY_STORAGE_KEY, JSON.stringify(map));
+};
+
+const loadStepCompletion = (): StepCompletionMap => {
+  try {
+    const raw = localStorage.getItem(GOAL_STEP_COMPLETION_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveStepCompletion = (map: StepCompletionMap) => {
+  localStorage.setItem(GOAL_STEP_COMPLETION_STORAGE_KEY, JSON.stringify(map));
+};
+
+const getTodayStr = (): string => new Date().toISOString().split('T')[0];
+
+const getDaysRemaining = (deadline: string): number => {
+  const today = new Date(getTodayStr());
+  const deadlineDate = new Date(deadline);
+  return Math.ceil((deadlineDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+};
+
+const getPriorityOrder = (priority: GoalPriority): number => {
+  const order: Record<GoalPriority, number> = { high: 0, medium: 1, low: 2 };
+  return order[priority] ?? 2;
+};
+
 export default function DashboardGoalsPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -30,9 +96,16 @@ export default function DashboardGoalsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [goalPriorities, setGoalPriorities] = useState<GoalPriorityMap>({});
+  const [stepCompletion, setStepCompletion] = useState<StepCompletionMap>({});
   const [form, setForm] = useState({ title: '', description: '', category: 'career', type: 'short-term', deadline: '', progress: 0, steps: '' });
 
   const filtered = filter === 'all' ? goals : goals.filter((g) => g.category === filter || g.status === filter);
+  const sorted = [...filtered].sort((a, b) => {
+    const aPriority = goalPriorities[a.id] ?? 'medium';
+    const bPriority = goalPriorities[b.id] ?? 'medium';
+    return getPriorityOrder(aPriority) - getPriorityOrder(bPriority);
+  });
 
   const loadGoals = async () => {
     try {
@@ -40,6 +113,8 @@ export default function DashboardGoalsPage() {
       setError('');
       const data = await getGoalsApi();
       setGoals(data);
+      setGoalPriorities(loadGoalPriorities());
+      setStepCompletion(loadStepCompletion());
     } catch {
       setError('Failed to load goals. Please try again.');
     } finally {
@@ -50,6 +125,40 @@ export default function DashboardGoalsPage() {
   useEffect(() => {
     void loadGoals();
   }, []);
+
+  const toggleStepCompletion = (goalId: string, stepIndex: number) => {
+    const currentCompletion = stepCompletion[goalId] ?? {};
+    const isCompleted = currentCompletion[stepIndex];
+    const updated = {
+      ...stepCompletion,
+      [goalId]: {
+        ...currentCompletion,
+        [stepIndex]: !isCompleted,
+      },
+    };
+    setStepCompletion(updated);
+    saveStepCompletion(updated);
+  };
+
+  const changePriority = (goalId: string) => {
+    const current = goalPriorities[goalId] ?? 'medium';
+    const nextMap: Record<GoalPriority, GoalPriority> = { high: 'medium', medium: 'low', low: 'high' };
+    const next = nextMap[current];
+    setGoalPriorities({ ...goalPriorities, [goalId]: next });
+    saveGoalPriorities({ ...goalPriorities, [goalId]: next });
+  };
+
+  const updateProgress = async (goalId: string, newProgress: number) => {
+    const goal = goals.find(g => g.id === goalId);
+    if (!goal) return;
+
+    try {
+      const updated = await updateGoalApi(goalId, { progress: newProgress });
+      setGoals(prev => prev.map(g => g.id === goalId ? updated : g));
+    } catch {
+      toast.error('Failed to update progress');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -183,45 +292,81 @@ export default function DashboardGoalsPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                 <AnimatePresence>
-                  {filtered.map((goal, i) => (
-                    <motion.div key={goal.id} layout initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ delay: i * 0.04 }}
-                      className="bg-card border border-border rounded-2xl p-5"
-                    >
-                      <div className="flex justify-between mb-3">
-                        <span className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">{CATEGORY_ICONS[goal.category]}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${goal.status === 'completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>{goal.status}</span>
-                      </div>
-                      <h3 className="font-bold text-sm mb-1">{goal.title}</h3>
-                      <p className="text-xs text-muted-foreground mb-3 line-clamp-2">{goal.description}</p>
-                      <div className="mb-3">
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="text-muted-foreground">Progress</span>
-                          <span className="font-bold text-primary">{goal.progress}%</span>
+                  {sorted.map((goal, i) => {
+                    const priority = goalPriorities[goal.id] ?? 'medium';
+                    const daysRemaining = getDaysRemaining(goal.deadline);
+                    const isOverdue = daysRemaining < 0;
+                    const goalStepCompletion = stepCompletion[goal.id] ?? {};
+                    const completedSteps = goal.steps.filter((_, idx) => goalStepCompletion[idx]).length;
+                    return (
+                      <motion.div key={goal.id} layout initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ delay: i * 0.04 }}
+                        className="bg-card border border-border rounded-2xl p-5 hover:border-primary/50 transition-all"
+                      >
+                        <div className="flex justify-between mb-3 gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">{CATEGORY_ICONS[goal.category]}</span>
+                            <button onClick={() => changePriority(goal.id)} className={`text-xs px-2 py-1 rounded-full cursor-pointer hover:opacity-80 transition-opacity font-medium ${PRIORITY_COLORS[priority]}`}>
+                              {PRIORITY_BADGES[priority]}
+                            </button>
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${goal.status === 'completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>{goal.status}</span>
                         </div>
-                        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                          <motion.div initial={{ width: 0 }} animate={{ width: `${goal.progress}%` }} transition={{ duration: 0.8 }} className={`h-full rounded-full ${getProgressColor(goal.progress)}`} />
+                        <h3 className="font-bold text-sm mb-1">{goal.title}</h3>
+                        <p className="text-xs text-muted-foreground mb-3 line-clamp-2">{goal.description}</p>
+                        
+                        <div className="mb-3">
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-muted-foreground">Progress</span>
+                            <span className="font-bold text-primary">{goal.progress}%</span>
+                          </div>
+                          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                            <motion.div initial={{ width: 0 }} animate={{ width: `${goal.progress}%` }} transition={{ duration: 0.8 }} className={`h-full rounded-full ${getProgressColor(goal.progress)}`} />
+                          </div>
+                          <input type="range" min="0" max="100" value={goal.progress} onChange={(e) => void updateProgress(goal.id, Number(e.target.value))} className="w-full mt-1 h-1.5 accent-primary cursor-pointer" />
                         </div>
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground mb-3">
-                        <Calendar className="w-3 h-3" />
-                        <span>{new Date(goal.deadline).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                      </div>
-                      {goal.steps.length > 0 && (
-                        <div className="mb-3 space-y-1">
-                          {goal.steps.slice(0, 2).map((step, j) => <p key={j} className="text-xs text-muted-foreground flex gap-1"><span className="text-primary">›</span>{step}</p>)}
-                          {goal.steps.length > 2 && <p className="text-xs text-muted-foreground">+{goal.steps.length - 2} more</p>}
+
+                        <div className="flex items-center gap-1 text-xs mb-3 flex-wrap">
+                          <Calendar className="w-3 h-3 text-muted-foreground" />
+                          <span className={isOverdue ? 'text-red-500 font-bold' : 'text-muted-foreground'}>{isOverdue ? `${Math.abs(daysRemaining)}d overdue` : `${daysRemaining}d left`}</span>
                         </div>
-                      )}
-                      <div className="flex gap-2">
-                        <button onClick={() => openEdit(goal)} className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs border border-border rounded-lg hover:bg-muted transition-colors">
-                          <Edit3 className="w-3 h-3" /> Edit
-                        </button>
-                        <button onClick={() => void handleDelete(goal.id)} className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs border border-red-200 text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
-                          <Trash2 className="w-3 h-3" /> Delete
-                        </button>
-                      </div>
-                    </motion.div>
-                  ))}
+
+                        {goal.steps.length > 0 && (
+                          <div className="mb-3 space-y-1 bg-muted/30 rounded-lg p-2">
+                            <p className="text-xs font-semibold text-muted-foreground">Steps: {completedSteps}/{goal.steps.length}</p>
+                            <div className="space-y-1">
+                              {goal.steps.slice(0, 3).map((step, idx) => {
+                                const isCompleted = goalStepCompletion[idx];
+                                return (
+                                  <button
+                                    key={idx}
+                                    onClick={() => toggleStepCompletion(goal.id, idx)}
+                                    className={`w-full text-left text-xs px-2 py-1 rounded flex items-center gap-2 transition-all ${
+                                      isCompleted
+                                        ? 'bg-green-500/20 text-green-600 dark:text-green-400 line-through'
+                                        : 'hover:bg-primary/10'
+                                    }`}
+                                  >
+                                    {isCompleted ? <CheckCircle className="w-3 h-3 shrink-0" /> : <div className="w-3 h-3 border rounded-sm shrink-0" />}
+                                    <span className="truncate">{step}</span>
+                                  </button>
+                                );
+                              })}
+                              {goal.steps.length > 3 && <p className="text-xs text-muted-foreground px-2">+{goal.steps.length - 3} more</p>}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex gap-2">
+                          <button onClick={() => openEdit(goal)} className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs border border-border rounded-lg hover:bg-muted transition-colors">
+                            <Edit3 className="w-3 h-3" /> Edit
+                          </button>
+                          <button onClick={() => void handleDelete(goal.id)} className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs border border-red-200 text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
+                            <Trash2 className="w-3 h-3" /> Delete
+                          </button>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
                 </AnimatePresence>
               </div>
             )}

@@ -2,22 +2,146 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle, Circle } from 'lucide-react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import { Dream } from '@/types';
+import { Dream, DreamMilestone, VisionBoardItem } from '@/types';
 import { getProgressColor } from '@/lib/utils';
 import { getDreamsApi, toggleDreamMilestoneApi } from '@/lib/api/dreamsApi';
+import { getVisionBoardItemsApi } from '@/lib/api/visionBoardApi';
 import { toast } from '@/components/ui/sonner';
+
+const VISION_DREAM_ID_PREFIX = 'vision-item-';
+const VISION_SYNC_STORAGE_KEY = 'dc_vision_dream_tracker_state';
+
+type VisionDreamMilestoneState = {
+  completed: boolean;
+  completedAt?: string;
+};
+
+type VisionDreamState = Record<string, Record<string, VisionDreamMilestoneState>>;
+
+const VISION_MILESTONE_TEMPLATE: DreamMilestone[] = [
+  { id: 'added-to-board', title: 'Added to Vision Board', completed: true },
+  { id: 'define-action-plan', title: 'Define action plan', completed: false },
+  { id: 'complete-first-step', title: 'Complete first step', completed: false },
+];
+
+const loadVisionDreamState = (): VisionDreamState => {
+  try {
+    const raw = localStorage.getItem(VISION_SYNC_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null ? parsed as VisionDreamState : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveVisionDreamState = (state: VisionDreamState) => {
+  localStorage.setItem(VISION_SYNC_STORAGE_KEY, JSON.stringify(state));
+};
+
+const normalizeSignature = (value: string): string => value.trim().toLowerCase();
+
+const computeProgress = (milestones: DreamMilestone[]) => {
+  if (milestones.length === 0) {
+    return 0;
+  }
+
+  const completedCount = milestones.filter((m) => m.completed).length;
+  return Math.round((completedCount / milestones.length) * 100);
+};
+
+const applyVisionMilestoneState = (
+  template: DreamMilestone[],
+  stored: Record<string, VisionDreamMilestoneState> | undefined
+): DreamMilestone[] => {
+  return template.map((milestone) => {
+    const saved = stored?.[milestone.id];
+    if (!saved) {
+      return milestone;
+    }
+
+    return {
+      ...milestone,
+      completed: saved.completed,
+      completedAt: saved.completedAt,
+    };
+  });
+};
+
+const toVisionDream = (
+  item: VisionBoardItem,
+  index: number,
+  storedState: VisionDreamState
+): Dream => {
+  const fallbackTitle = `${item.category || 'Vision'} Dream ${index + 1}`;
+  const milestones = applyVisionMilestoneState(
+    VISION_MILESTONE_TEMPLATE,
+    storedState[item.id]
+  );
+
+  return {
+    id: `${VISION_DREAM_ID_PREFIX}${item.id}`,
+    title: fallbackTitle,
+    category: item.category || 'vision',
+    progress: computeProgress(milestones),
+    deadline: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
+    milestones,
+    image: item.content,
+  };
+};
+
+const isVisionSyncedDream = (dreamId: string) => dreamId.startsWith(VISION_DREAM_ID_PREFIX);
+
+const extractVisionItemId = (dreamId: string) => dreamId.replace(VISION_DREAM_ID_PREFIX, '');
 
 export default function DashboardDreamTrackerPage() {
   const [dreams, setDreams] = useState<Dream[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [newMilestoneText, setNewMilestoneText] = useState<Record<string, string>>({});
 
   const loadDreams = async () => {
     try {
       setLoading(true);
       setError('');
-      const data = await getDreamsApi();
-      setDreams(data);
+      const [dreamsData, visionItemsData] = await Promise.all([
+        getDreamsApi(),
+        getVisionBoardItemsApi(),
+      ]);
+
+      const storedState = loadVisionDreamState();
+      const visionImageItems = visionItemsData.filter((item) => item.type === 'image');
+      const existingDreamSignatures = new Set(
+        dreamsData
+          .map((dream) => dream.image)
+          .filter((image): image is string => Boolean(image))
+          .map((image) => normalizeSignature(image))
+      );
+
+      const syncedVisionDreams = visionImageItems
+        .filter((item) => !existingDreamSignatures.has(normalizeSignature(item.content)))
+        .map((item, index) => toVisionDream(item, index, storedState));
+
+      // merge extras from local storage (user-added milestones)
+      const extrasRaw = localStorage.getItem('dc_dream_extras');
+      let extras: Record<string, DreamMilestone[]> = {};
+      try {
+        extras = extrasRaw ? JSON.parse(extrasRaw) : {};
+      } catch {
+        extras = {};
+      }
+
+      const merged = [...dreamsData, ...syncedVisionDreams].map((d) => {
+        const extra = extras[d.id];
+        if (!extra || extra.length === 0) return d;
+        const mergedMilestones = [...d.milestones, ...extra];
+        return { ...d, milestones: mergedMilestones, progress: computeProgress(mergedMilestones) };
+      });
+
+      setDreams(merged);
     } catch {
       setError('Failed to load dreams. Please try again.');
     } finally {
@@ -67,6 +191,51 @@ export default function DashboardDreamTrackerPage() {
       })
     );
 
+    if (isVisionSyncedDream(dreamId)) {
+      const itemId = extractVisionItemId(dreamId);
+      const updatedDream = dreams
+        .map((dream) => {
+          if (dream.id !== dreamId) {
+            return dream;
+          }
+
+          const updatedMilestones = dream.milestones.map((milestone) => {
+            if (milestone.id !== milestoneId) {
+              return milestone;
+            }
+
+            const completed = !milestone.completed;
+            return {
+              ...milestone,
+              completed,
+              completedAt: completed ? new Date().toISOString().split('T')[0] : undefined,
+            };
+          });
+
+          return {
+            ...dream,
+            milestones: updatedMilestones,
+            progress: computeProgress(updatedMilestones),
+          };
+        })
+        .find((dream) => dream.id === dreamId);
+
+      if (updatedDream) {
+        const currentState = loadVisionDreamState();
+        currentState[itemId] = updatedDream.milestones.reduce<Record<string, VisionDreamMilestoneState>>((accumulator, milestone) => {
+          accumulator[milestone.id] = {
+            completed: milestone.completed,
+            completedAt: milestone.completedAt,
+          };
+          return accumulator;
+        }, {});
+        saveVisionDreamState(currentState);
+      }
+
+      toast.success('Vision dream milestone updated');
+      return;
+    }
+
     try {
       const updated = await toggleDreamMilestoneApi(dreamId, milestoneId);
       setDreams((prev) => prev.map((d) => (d.id === dreamId ? updated : d)));
@@ -75,6 +244,39 @@ export default function DashboardDreamTrackerPage() {
       setDreams((prev) => prev.map((dream) => (dream.id === dreamId ? previousDream : dream)));
       toast.error('Failed to update milestone');
     }
+  };
+
+  const saveExtraMilestones = (state: Record<string, DreamMilestone[]>) => {
+    try {
+      localStorage.setItem('dc_dream_extras', JSON.stringify(state));
+    } catch {}
+  };
+
+  const addMilestone = (dreamId: string) => {
+    const text = (newMilestoneText[dreamId] || '').trim();
+    if (!text) return;
+
+    const newMs: DreamMilestone = { id: `ms-${Date.now()}`, title: text, completed: false };
+
+    setDreams((prev) => {
+      const next = prev.map((d) => (d.id === dreamId ? { ...d, milestones: [...d.milestones, newMs], progress: computeProgress([...d.milestones, newMs]) } : d));
+      // persist extras separately
+      const extrasRaw = localStorage.getItem('dc_dream_extras');
+      let extras: Record<string, DreamMilestone[]> = {};
+      try {
+        extras = extrasRaw ? JSON.parse(extrasRaw) : {};
+      } catch {
+        extras = {};
+      }
+
+      extras[dreamId] = [...(extras[dreamId] || []), newMs];
+      saveExtraMilestones(extras);
+
+      return next;
+    });
+
+    setNewMilestoneText((prev) => ({ ...prev, [dreamId]: '' }));
+    toast.success('Milestone added');
   };
 
   const avgProgress = dreams.length ? Math.round(dreams.reduce((a, d) => a + d.progress, 0) / dreams.length) : 0;
@@ -151,6 +353,10 @@ export default function DashboardDreamTrackerPage() {
                       {m.completedAt && <span className="text-xs text-muted-foreground ml-auto">{m.completedAt}</span>}
                     </button>
                   ))}
+                  <div className="mt-3 flex gap-2">
+                    <input value={newMilestoneText[dream.id] || ''} onChange={(e) => setNewMilestoneText(prev => ({ ...prev, [dream.id]: e.target.value }))} placeholder="Add checklist item..." className="flex-1 text-sm px-3 py-2 rounded-lg border border-border bg-background focus:outline-none" />
+                    <button onClick={() => addMilestone(dream.id)} className="btn-primary text-sm px-3 py-2">Add</button>
+                  </div>
                 </div>
               </div>
             </motion.div>
