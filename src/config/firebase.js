@@ -1,4 +1,8 @@
 import admin from "firebase-admin";
+import dotenv from "dotenv";
+
+dotenv.config();
+dotenv.config({ path: ".env.local" });
 
 const hasPlaceholderValue = (value) => {
   if (!value) {
@@ -21,16 +25,17 @@ const initializeFirebase = () => {
     return;
   }
 
-  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
 
-  if (
-    hasPlaceholderValue(projectId) ||
-    hasPlaceholderValue(clientEmail) ||
-    hasPlaceholderValue(privateKey)
-  ) {
-    throw new Error("Firebase credentials are not configured");
+  if (hasPlaceholderValue(projectId)) {
+    throw new Error("Firebase project id is not configured");
+  }
+
+  if (hasPlaceholderValue(clientEmail) || hasPlaceholderValue(privateKey)) {
+    admin.initializeApp({ projectId });
+    return;
   }
 
   admin.initializeApp({

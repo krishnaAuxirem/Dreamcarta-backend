@@ -3,6 +3,15 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
 const ALLOWED_ROLES = ["user", "mentor", "admin"];
+const getJwtSecret = () => {
+  if (process.env.JWT_SECRET) {
+    return process.env.JWT_SECRET;
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET is not configured");
+  }
+  return "dreamcarta-local-dev-jwt-secret";
+};
 
 const normalizeRole = (roleValue, fallback = "user") => {
   const normalized = String(roleValue || "").trim().toLowerCase();
@@ -112,7 +121,7 @@ export const loginUser = async (req, res) => {
 
     const token = jwt.sign(
       { id: user.id, email: user.email, role: dbRole },
-      process.env.JWT_SECRET,
+      getJwtSecret(),
       { expiresIn: "1d" }
     );
 
@@ -141,15 +150,27 @@ export const firebaseLogin = async (req, res) => {
   try {
     const { uid, email, name, picture } = req.firebaseUser;
     if (!uid || !email) {
+      // Defensive: require both uid and email for reliable user creation/upsert.
       return res.status(400).json({ message: "Invalid Firebase token payload ❌" });
     }
 
     // 1) Prefer existing user by Firebase UID.
-    let user = await User.findOne({ where: { firebaseUid: uid } });
+    let user = null;
+    try {
+      user = await User.findOne({ where: { firebaseUid: uid } });
+    } catch (err) {
+      console.log('Error querying by firebaseUid:', err);
+      // continue - we'll try email if possible
+    }
 
     // 2) If not found, try to link by email to avoid duplicate-email crashes.
-    if (!user) {
-      user = await User.findOne({ where: { email } });
+    if (!user && email) {
+      try {
+        user = await User.findOne({ where: { email } });
+      } catch (err) {
+        console.log('Error querying by email:', err);
+      }
+
       if (user) {
         if (user.firebaseUid && user.firebaseUid !== uid) {
           return res.status(409).json({
@@ -166,14 +187,19 @@ export const firebaseLogin = async (req, res) => {
 
     // 3) Create a new user only when neither UID nor email exists.
     if (!user) {
-      user = await User.create({
-        firebaseUid: uid,
-        email,
-        name: name || email.split("@")[0],
-        profilePic: picture || null,
-        role: 'user',
-        isActive: true,
-      });
+      try {
+        user = await User.create({
+          firebaseUid: uid,
+          email,
+          name: name || (email ? email.split("@")[0] : uid),
+          profilePic: picture || null,
+          role: 'user',
+          isActive: true,
+        });
+      } catch (createErr) {
+        console.log('Error creating user during firebaseLogin:', createErr);
+        return res.status(500).json({ message: 'Firebase login failed ❌' });
+      }
     }
 
     // Keep profile info fresh on each login.
@@ -193,7 +219,7 @@ export const firebaseLogin = async (req, res) => {
     // Keep response shape same as normal login for frontend compatibility.
     const token = jwt.sign(
       { id: user.id, email: user.email, firebaseUid: user.firebaseUid, role: user.role },
-      process.env.JWT_SECRET,
+      getJwtSecret(),
       { expiresIn: "1d" }
     );
 

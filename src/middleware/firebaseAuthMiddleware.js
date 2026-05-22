@@ -2,6 +2,16 @@ import { getFirebaseAuth } from "../config/firebase.js";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
+const getJwtSecret = () => {
+  if (process.env.JWT_SECRET) {
+    return process.env.JWT_SECRET;
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET is not configured");
+  }
+  return "dreamcarta-local-dev-jwt-secret";
+};
+
 const extractBearerToken = (req) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -46,8 +56,8 @@ export const verifyFirebaseToken = async (req, res, next) => {
 
     next();
   } catch (error) {
-    if (error.message === "Firebase credentials are not configured") {
-      return res.status(500).json({ message: "Firebase credentials not configured ❌" });
+    if (error.message === "Firebase project id is not configured") {
+      return res.status(500).json({ message: "Firebase project id not configured ❌" });
     }
     return res.status(401).json({ message: mapFirebaseAuthError(error) });
   }
@@ -84,7 +94,7 @@ const firebaseAuthMiddleware = async (req, res, next) => {
       return next();
     } catch (firebaseError) {
       // Backward compatibility: accept existing JWT login tokens.
-      const decodedJwt = jwt.verify(token, process.env.JWT_SECRET);
+      const decodedJwt = jwt.verify(token, getJwtSecret());
       if (decodedJwt?.id) {
         const dbUser = await User.findByPk(decodedJwt.id);
         if (!dbUser) {
@@ -102,8 +112,8 @@ const firebaseAuthMiddleware = async (req, res, next) => {
       return next();
     }
   } catch (error) {
-    if (error.message === "Firebase credentials are not configured") {
-      return res.status(500).json({ message: "Firebase credentials not configured ❌" });
+    if (error.message === "Firebase project id is not configured") {
+      return res.status(500).json({ message: "Firebase project id not configured ❌" });
     }
     return res.status(401).json({ message: mapFirebaseAuthError(error) });
   }
