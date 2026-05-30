@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+﻿import dotenv from 'dotenv';
 dotenv.config();
 
 import express from 'express';
@@ -19,6 +19,7 @@ import goalsRoutes from "./routes/goalsRoutes.js";
 import habitsRoutes from "./routes/habitsRoutes.js";
 import visionBoardRoutes from "./routes/visionBoardRoutes.js";
 import dreamsRoutes from "./routes/dreamsRoutes.js";
+import dreamPlanRoutes from "./routes/dreamPlanRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
 import blogRoutes from "./routes/blogRoutes.js";
@@ -39,6 +40,7 @@ import './models/Habit.js';
 import './models/MentorAdvice.js';
 import './models/VisionBoardItem.js';
 import './models/Dream.js';
+import './models/DreamPlan.js';
 import './models/Contact.js';
 import './models/UserSetting.js';
 import './models/CommunityPost.js';
@@ -59,7 +61,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 
-// 🔧 Ensure columns
+// ðŸ”§ Ensure columns
 const ensureUserAuthColumns = async () => {
   const queryInterface = sequelize.getQueryInterface();
   const tableDefinition = await queryInterface.describeTable("Users");
@@ -70,7 +72,7 @@ const ensureUserAuthColumns = async () => {
       allowNull: false,
       defaultValue: "user",
     });
-    console.log("Added Users.role ✅");
+    console.log("Added Users.role âœ…");
   }
 
   if (!tableDefinition.isActive) {
@@ -79,7 +81,7 @@ const ensureUserAuthColumns = async () => {
       allowNull: false,
       defaultValue: true,
     });
-    console.log("Added Users.isActive ✅");
+    console.log("Added Users.isActive âœ…");
   }
 
   if (tableDefinition.role) {
@@ -90,7 +92,7 @@ const ensureUserAuthColumns = async () => {
         allowNull: false,
         defaultValue: "user",
       });
-      console.log("Updated Users.role ENUM to include mentor ✅");
+      console.log("Updated Users.role ENUM to include mentor âœ…");
     }
   }
 };
@@ -108,7 +110,7 @@ const ensureSeedUser = async () => {
       role: "user",
       isActive: true,
     });
-    console.log("Seeded default test user ✅");
+    console.log("Seeded default test user âœ…");
     return;
   }
 
@@ -131,7 +133,7 @@ const ensureSeedUser = async () => {
 
   if (needsSave) {
     await existingSeedUser.save();
-    console.log("Normalized test user credentials/role/status ✅");
+    console.log("Normalized test user credentials/role/status âœ…");
   }
 };
 
@@ -148,7 +150,7 @@ const ensureDemoUserAccount = async () => {
       role: 'user',
       isActive: true,
     });
-    console.log('Seeded demo user account ✅');
+    console.log('Seeded demo user account âœ…');
     return;
   }
 
@@ -170,7 +172,7 @@ const ensureDemoUserAccount = async () => {
 
   if (needsSave) {
     await existing.save();
-    console.log('Normalized demo user account ✅');
+    console.log('Normalized demo user account âœ…');
   }
 };
 
@@ -187,7 +189,7 @@ const ensureDemoMentorAccount = async () => {
       role: 'mentor',
       isActive: true,
     });
-    console.log('Seeded demo mentor account ✅');
+    console.log('Seeded demo mentor account âœ…');
     return;
   }
 
@@ -209,7 +211,7 @@ const ensureDemoMentorAccount = async () => {
 
   if (needsSave) {
     await existing.save();
-    console.log('Normalized demo mentor account ✅');
+    console.log('Normalized demo mentor account âœ…');
   }
 };
 
@@ -241,7 +243,7 @@ const ensureDefaultPlans = async () => {
     const existing = await Plan.findOne({ where: { name: plan.name } });
     if (!existing) {
       await Plan.create(plan);
-      console.log(`Seeded plan ${plan.name} ✅`);
+      console.log(`Seeded plan ${plan.name} âœ…`);
     }
   }
 };
@@ -256,7 +258,7 @@ const ensureDefaultReviews = async () => {
     {
       author: 'Priya Sharma',
       title: 'Transformed My Life',
-      content: 'DreamCarta completely transformed my approach to goals. Within 6 months of using the platform, I launched my startup and landed my first ₹50L client. The vision board and AI coach are game-changers!',
+      content: 'DreamCarta completely transformed my approach to goals. Within 6 months of using the platform, I launched my startup and landed my first â‚¹50L client. The vision board and AI coach are game-changers!',
       rating: 5,
       image: 'https://ui-avatars.com/api/?name=Priya+Sharma&background=6133B4&color=fff',
       isPublished: true,
@@ -287,7 +289,7 @@ const ensureDefaultReviews = async () => {
     },
   ]);
 
-  console.log('Seeded default reviews ✅');
+  console.log('Seeded default reviews âœ…');
 };
 
 const ensureDefaultDreams = async () => {
@@ -378,7 +380,7 @@ const ensureDefaultDreams = async () => {
   }
 
   if (createdCount > 0) {
-    console.log(`Seeded ${createdCount} default dreams ✅`);
+    console.log(`Seeded ${createdCount} default dreams âœ…`);
   }
 };
 
@@ -415,7 +417,7 @@ const ensureDefaultBlogs = async () => {
     },
   ]);
 
-  console.log('Seeded default blogs ✅');
+  console.log('Seeded default blogs âœ…');
 };
 
 const ensureDefaultMentor = async () => {
@@ -429,7 +431,7 @@ const ensureDefaultMentor = async () => {
       role: 'mentor',
       isActive: true,
     });
-    console.log('Seeded default mentor ✅');
+    console.log('Seeded default mentor âœ…');
     return;
   }
 
@@ -437,7 +439,7 @@ const ensureDefaultMentor = async () => {
     existingMentor.role = 'mentor';
     existingMentor.isActive = true;
     await existingMentor.save();
-    console.log('Normalized default mentor role/status ✅');
+    console.log('Normalized default mentor role/status âœ…');
   }
 };
 
@@ -494,7 +496,7 @@ const ensureDefaultCommunityPosts = async () => {
     },
   ]);
 
-  console.log('Seeded default community posts ✅');
+  console.log('Seeded default community posts âœ…');
 };
 
 const ensureDefaultActivities = async () => {
@@ -546,17 +548,20 @@ const ensureDefaultActivities = async () => {
 
   if (activitySeed.length > 0) {
     await Activity.bulkCreate(activitySeed);
-    console.log('Seeded default activities ✅');
+    console.log('Seeded default activities âœ…');
   }
 };
 
 
-// ================== 🔥 MIDDLEWARE ==================
+// ================== ðŸ”¥ MIDDLEWARE ==================
 
-// ✅ CORS FIX (FINAL)
+// âœ… CORS FIX (FINAL)
 const allowedOrigins = [
   'http://localhost:8081',
   'http://localhost:8082',
+  'http://localhost:8083',
+  'http://localhost:8084',
+  'http://localhost:8085',
   'http://localhost:5173',
   'http://localhost:3000',
   'https://dreamcarta.co.in',
@@ -585,7 +590,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
-// 🔥 IMPORTANT — handle preflight
+// ðŸ”¥ IMPORTANT â€” handle preflight
 
 
 // Body parser
@@ -594,7 +599,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 
-// ================== 🔥 ROUTES ==================
+// ================== ðŸ”¥ ROUTES ==================
 
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
@@ -602,6 +607,7 @@ app.use("/api/goals", goalsRoutes);
 app.use("/api/habits", habitsRoutes);
 app.use("/api/vision-board", visionBoardRoutes);
 app.use("/api/dreams", dreamsRoutes);
+app.use("/api/dream-plans", dreamPlanRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/content", contentRoutes);
@@ -618,23 +624,23 @@ app.use("/api/admin/contacts", adminContactRoutes);
 app.use("/api/activity", activityRoutes);
 
 
-// ================== 🔥 ERROR HANDLER ==================
+// ================== ðŸ”¥ ERROR HANDLER ==================
 
 app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
-    return res.status(400).json({ message: "Invalid JSON body ❌" });
+    return res.status(400).json({ message: "Invalid JSON body âŒ" });
   }
   next(err);
 });
 
 
-// ================== 🔥 DB INIT ==================
+// ================== ðŸ”¥ DB INIT ==================
 
 await connectDB();
 await sequelize.sync();
 await ensureUserAuthColumns();
 
-console.log("Tables synced ✅");
+console.log("Tables synced âœ…");
 
 // Create admin if not exists
 await createAdmin();
@@ -650,14 +656,14 @@ await ensureDefaultCommunityPosts();
 await ensureDefaultActivities();
 
 
-// ================== 🔥 TEST ROUTE ==================
+// ================== ðŸ”¥ TEST ROUTE ==================
 
 app.get('/', (req, res) => {
-  res.send('Server is running 🚀');
+  res.send('Server is running ðŸš€');
 });
 
 
-// ================== 🔥 START SERVER ==================
+// ================== ðŸ”¥ START SERVER ==================
 
 const PORT = Number(process.env.PORT || 5000);
 
